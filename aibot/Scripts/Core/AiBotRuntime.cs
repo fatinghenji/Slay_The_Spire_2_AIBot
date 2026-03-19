@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Godot;
+using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.AutoSlay.Helpers;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
@@ -14,11 +15,14 @@ using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes;
+using MegaCrit.Sts2.Core.Nodes.Events.Custom.CrystalSphere;
+using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Events;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Potions;
+using MegaCrit.Sts2.Core.Nodes.Relics;
 using MegaCrit.Sts2.Core.Nodes.Rewards;
 using MegaCrit.Sts2.Core.Nodes.RestSite;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
@@ -122,7 +126,7 @@ public sealed class AiBotRuntime : IDisposable
         var runState = RunManager.Instance.DebugOnlyGetState();
         if (runState is null || StateAnalyzer is null)
         {
-            return new RunAnalysis(0, "Unknown", "Generalist", string.Empty, Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
+            return new RunAnalysis(0, "Unknown", "Generalist", string.Empty, Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
         }
 
         CurrentAnalysis = StateAnalyzer.Analyze(runState);
@@ -271,8 +275,14 @@ public sealed class AiBotRuntime : IDisposable
         var overlay = NOverlayStack.Instance?.Peek();
         switch (overlay)
         {
+            case NChooseARelicSelection chooseRelicScreen:
+                return await HandleChooseRelicScreenAsync(chooseRelicScreen, cancellationToken);
+            case NCrystalSphereScreen crystalSphereScreen:
+                return await HandleCrystalSphereScreenAsync(crystalSphereScreen, cancellationToken);
             case NCardRewardSelectionScreen cardRewardScreen:
                 return await HandleCardRewardScreenAsync(cardRewardScreen, cancellationToken);
+            case NChooseABundleSelectionScreen bundleScreen:
+                return await HandleBundleSelectionScreenAsync(bundleScreen, cancellationToken);
             case NRewardsScreen rewardsScreen:
                 return await HandleRewardsScreenAsync(rewardsScreen, cancellationToken);
             default:
@@ -297,10 +307,187 @@ public sealed class AiBotRuntime : IDisposable
         }
 
         var options = holders.Select(holder => holder.CardModel).Where(card => card is not null).Cast<CardModel>().ToList();
+        var alternativeButtons = UiHelper.FindAll<NCardRewardAlternativeButton>(screen)
+            .Select(button => new
+            {
+                Button = button,
+                Label = GetRewardAlternativeLabel(button)
+            })
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Label))
+            .ToList();
+
+        if (alternativeButtons.Count > 0)
+        {
+            var context = new AiCardSelectionContext(AiCardSelectionKind.CardReward, "Choose a card reward or reward alternative.", 0, 1, Cancelable: true, Zone: "reward-screen", Source: nameof(NCardRewardSelectionScreen), ExtraInfo: $"CardOptions={options.Count};AlternativeOptions={alternativeButtons.Count}");
+            var alternatives = alternativeButtons
+                .Select(entry => new DecisionOption(entry.Label!, entry.Label!, "reward alternative"))
+                .ToList();
+            var rewardChoice = await DecisionEngine.ChooseCardRewardChoiceAsync(context, options, alternatives, GetCurrentAnalysis(), cancellationToken);
+            if (!string.IsNullOrWhiteSpace(rewardChoice.AlternativeOptionId))
+            {
+                var selectedAlternative = alternativeButtons.FirstOrDefault(entry => string.Equals(entry.Label, rewardChoice.AlternativeOptionId, StringComparison.OrdinalIgnoreCase));
+                if (selectedAlternative is not null)
+                {
+                    await WaitForActionWindowAsync(Config.ScreenActionDelayMs, cancellationToken);
+                    Log.Info($"[AiBot] Card reward decision: {rewardChoice.Reason}");
+                    await UiHelper.Click(selectedAlternative.Button);
+                    await WaitForActionQueueToDrainAsync(cancellationToken);
+                    ApplyActionCooldown(Config.ScreenActionDelayMs);
+                    return true;
+                }
+            }
+
+            var selectedHolder = holders.FirstOrDefault(holder => holder.CardModel == rewardChoice.Card) ?? holders[0];
+            Log.Info($"[AiBot] Card reward decision: {rewardChoice.Reason}");
+            selectedHolder.EmitSignal(NCardHolder.SignalName.Pressed, selectedHolder);
+            return true;
+        }
+
         var decision = await DecisionEngine.ChooseCardRewardAsync(options, GetCurrentAnalysis(), cancellationToken);
         var chosenHolder = holders.FirstOrDefault(holder => holder.CardModel == decision.Card) ?? holders[0];
         Log.Info($"[AiBot] Card reward decision: {decision.Reason}");
         chosenHolder.EmitSignal(NCardHolder.SignalName.Pressed, chosenHolder);
+        return true;
+    }
+
+    private async Task<bool> HandleBundleSelectionScreenAsync(NChooseABundleSelectionScreen screen, CancellationToken cancellationToken)
+    {
+        if (DecisionEngine is null)
+        {
+            return false;
+        }
+
+        var bundles = UiHelper.FindAll<NCardBundle>(screen)
+            .Select((bundle, index) => new { Bundle = bundle, Index = index })
+            .Where(entry => entry.Bundle.Bundle is { Count: > 0 })
+            .ToList();
+        if (bundles.Count == 0)
+        {
+            LogThrottled("overlay-bundle-idle", "[AiBot] Overlay idle: bundle selection screen has no bundles.", TimeSpan.FromSeconds(2));
+            return false;
+        }
+
+        var context = new AiCardSelectionContext(AiCardSelectionKind.BundleChoice, "Choose one card bundle.", 1, 1, Cancelable: false, Zone: "bundle", Source: nameof(NChooseABundleSelectionScreen), ExtraInfo: $"BundleCount={bundles.Count}");
+        var decision = await DecisionEngine.ChooseBundleAsync(
+            context,
+            bundles.Select(entry => new CardBundleOption(entry.Index, entry.Bundle.Bundle)).ToList(),
+            GetCurrentAnalysis(),
+            cancellationToken);
+
+        var selectedBundle = bundles.FirstOrDefault(entry => entry.Index == decision.SelectedIndex)?.Bundle ?? bundles[0].Bundle;
+        await WaitForActionWindowAsync(Config.ScreenActionDelayMs, cancellationToken);
+        Log.Info($"[AiBot] Bundle decision: {decision.Reason}");
+        await UiHelper.Click(selectedBundle.Hitbox);
+
+        var confirmButton = UiHelper.FindFirst<NConfirmButton>(screen);
+        if (confirmButton is not null)
+        {
+            await WaitForActionWindowAsync(Config.ScreenActionDelayMs, cancellationToken);
+            await UiHelper.Click(confirmButton);
+        }
+
+        await WaitForActionQueueToDrainAsync(cancellationToken);
+        ApplyActionCooldown(Config.ScreenActionDelayMs);
+        return true;
+    }
+
+    private async Task<bool> HandleChooseRelicScreenAsync(NChooseARelicSelection screen, CancellationToken cancellationToken)
+    {
+        if (DecisionEngine is null)
+        {
+            return false;
+        }
+
+        var holders = UiHelper.FindAll<NRelicBasicHolder>(screen)
+            .Where(holder => holder.Relic?.Model is not null)
+            .ToList();
+        if (holders.Count == 0)
+        {
+            LogThrottled("overlay-choose-relic-idle", "[AiBot] Overlay idle: choose relic screen has no relic holders.", TimeSpan.FromSeconds(2));
+            return false;
+        }
+
+        var skipButton = UiHelper.FindFirst<NChoiceSelectionSkipButton>(screen);
+        var relicModels = holders.Select(holder => holder.Relic.Model).ToList();
+        var decision = await DecisionEngine.ChooseRelicAsync(relicModels, nameof(NChooseARelicSelection), skipButton is not null && skipButton.IsVisibleInTree() && skipButton.IsEnabled, GetCurrentAnalysis(), cancellationToken);
+
+        if (decision.SkipSelection && skipButton is not null && skipButton.IsVisibleInTree() && skipButton.IsEnabled)
+        {
+            await WaitForActionWindowAsync(Config.ScreenActionDelayMs, cancellationToken);
+            Log.Info($"[AiBot] Choose relic decision: {decision.Reason}");
+            await UiHelper.Click(skipButton);
+            await WaitForActionQueueToDrainAsync(cancellationToken);
+            ApplyActionCooldown(Config.ScreenActionDelayMs);
+            return true;
+        }
+
+        var chosenHolder = decision.Relic is not null
+            ? holders.FirstOrDefault(holder => holder.Relic.Model == decision.Relic || holder.Relic.Model.Id == decision.Relic.Id) ?? holders[0]
+            : holders[0];
+        await WaitForActionWindowAsync(Config.ScreenActionDelayMs, cancellationToken);
+        Log.Info($"[AiBot] Choose relic decision: {decision.Reason}");
+        await UiHelper.Click(chosenHolder);
+        await WaitForActionQueueToDrainAsync(cancellationToken);
+        ApplyActionCooldown(Config.ScreenActionDelayMs);
+        return true;
+    }
+
+    private async Task<bool> HandleCrystalSphereScreenAsync(NCrystalSphereScreen screen, CancellationToken cancellationToken)
+    {
+        if (DecisionEngine is null)
+        {
+            return false;
+        }
+
+        var proceedButton = screen.GetNodeOrNull<NProceedButton>("%ProceedButton");
+        if (proceedButton is not null && proceedButton.IsEnabled)
+        {
+            await WaitForActionWindowAsync(Config.ScreenActionDelayMs, cancellationToken);
+            Log.Info("[AiBot] Crystal Sphere decision: proceed.");
+            await UiHelper.Click(proceedButton);
+            await WaitForActionQueueToDrainAsync(cancellationToken);
+            ApplyActionCooldown(Config.ScreenActionDelayMs);
+            return true;
+        }
+
+        var cellsContainer = screen.GetNodeOrNull<Control>("%Cells");
+        if (cellsContainer is null)
+        {
+            return false;
+        }
+
+        var hiddenCells = UiHelper.FindAll<NCrystalSphereCell>(cellsContainer)
+            .Where(cell => cell.Visible && cell.Entity.IsHidden)
+            .ToList();
+        if (hiddenCells.Count == 0)
+        {
+            LogThrottled("overlay-crystal-sphere-idle", "[AiBot] Overlay idle: Crystal Sphere has no hidden cells.", TimeSpan.FromSeconds(2));
+            return false;
+        }
+
+        var entityField = typeof(NCrystalSphereScreen).GetField("_entity", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var minigame = entityField?.GetValue(screen) as MegaCrit.Sts2.Core.Events.Custom.CrystalSphereEvent.CrystalSphereMinigame;
+        if (minigame is null)
+        {
+            return false;
+        }
+
+        var decision = await DecisionEngine.ChooseCrystalSphereActionAsync(minigame, GetCurrentAnalysis(), cancellationToken);
+        var bigButton = screen.GetNodeOrNull<NDivinationButton>("%BigDivinationButton");
+        var smallButton = screen.GetNodeOrNull<NDivinationButton>("%SmallDivinationButton");
+        var desiredToolButton = decision.UseBigDivination ? bigButton : smallButton;
+        if (desiredToolButton is not null && desiredToolButton.IsVisibleInTree() && desiredToolButton.IsEnabled)
+        {
+            await WaitForActionWindowAsync(Config.ScreenActionDelayMs, cancellationToken);
+            await UiHelper.Click(desiredToolButton);
+        }
+
+        var selectedCell = hiddenCells.FirstOrDefault(cell => cell.Entity.X == decision.X && cell.Entity.Y == decision.Y) ?? hiddenCells[0];
+        await WaitForActionWindowAsync(Config.ScreenActionDelayMs, cancellationToken);
+        Log.Info($"[AiBot] Crystal Sphere decision: {decision.Reason}");
+        selectedCell.EmitSignal(NClickableControl.SignalName.Released, selectedCell);
+        await WaitForActionQueueToDrainAsync(cancellationToken);
+        ApplyActionCooldown(Config.ScreenActionDelayMs);
         return true;
     }
 
@@ -313,7 +500,14 @@ public sealed class AiBotRuntime : IDisposable
 
         var player = LocalContext.GetMe(RunManager.Instance.DebugOnlyGetState());
         var allButtons = UiHelper.FindAll<NRewardButton>(screen).ToList();
-        var buttons = allButtons.Where(button => button.IsEnabled).ToList();
+        var skippedButtons = GetSkippedRewardButtons(screen);
+        var pendingButtons = allButtons
+            .Where(button => !skippedButtons.Contains(button))
+            .ToList();
+        var buttons = pendingButtons
+            .Where(button => button.IsEnabled)
+            .Where(button => button.Visible && button.IsVisibleInTree())
+            .ToList();
         if (buttons.Count > 0)
         {
             var decision = await DecisionEngine.ChooseRewardAsync(buttons, player?.HasOpenPotionSlots ?? false, GetCurrentAnalysis(), cancellationToken);
@@ -328,9 +522,9 @@ public sealed class AiBotRuntime : IDisposable
             }
         }
 
-        if (allButtons.Count > 0)
+        if (pendingButtons.Count > 0)
         {
-            LogThrottled("overlay-rewards-waiting", "[AiBot] Rewards waiting: reward buttons still exist but are not enabled yet.", TimeSpan.FromSeconds(2));
+            LogThrottled("overlay-rewards-waiting", $"[AiBot] Rewards waiting: {pendingButtons.Count} reward button(s) still exist but are not interactable yet.", TimeSpan.FromSeconds(2));
             return false;
         }
 
@@ -401,9 +595,11 @@ public sealed class AiBotRuntime : IDisposable
 
         await WaitForActionWindowAsync(Config.CombatActionDelayMs, cancellationToken);
         Log.Info($"[AiBot] Combat decision: {decision.Reason}");
-        if (!decision.Card.TryManualPlay(decision.Target))
+        var combatTarget = decision.Target ?? ChooseCombatTarget(decision.Card, player, enemies);
+        if (!decision.Card.TryManualPlay(combatTarget))
         {
-            Log.Warn($"[AiBot] Manual play failed for {decision.Card.Title}, ending turn instead.");
+            var targetText = combatTarget is null ? "null" : $"{combatTarget.Name}#{combatTarget.CombatId}";
+            Log.Warn($"[AiBot] Manual play failed for {decision.Card.Title}. targetType={decision.Card.TargetType}, target={targetText}. Ending turn instead.");
             PlayerCmd.EndTurn(player, false);
         }
 
@@ -632,9 +828,16 @@ public sealed class AiBotRuntime : IDisposable
             .ToList();
         if (relicHolders.Count > 0)
         {
+            var relicModels = relicHolders.Select(holder => holder.Relic.Model).ToList();
+            var decision = DecisionEngine is null
+                ? new RelicChoiceDecision(relicModels.FirstOrDefault(), false, "Fallback treasure relic choice.")
+                : await DecisionEngine.ChooseRelicAsync(relicModels, "Treasure Room", false, GetCurrentAnalysis(), cancellationToken);
+            var chosenHolder = decision.Relic is not null
+                ? relicHolders.FirstOrDefault(holder => holder.Relic.Model == decision.Relic || holder.Relic.Model.Id == decision.Relic.Id) ?? relicHolders[0]
+                : relicHolders[0];
             await WaitForActionWindowAsync(Config.ScreenActionDelayMs, cancellationToken);
-            Log.Info("[AiBot] Picking treasure relic.");
-            await UiHelper.Click(relicHolders[0]);
+            Log.Info($"[AiBot] Treasure relic decision: {decision.Reason}");
+            await UiHelper.Click(chosenHolder);
             await WaitForActionQueueToDrainAsync(cancellationToken);
             ApplyActionCooldown(Config.ScreenActionDelayMs);
             return true;
@@ -670,9 +873,15 @@ public sealed class AiBotRuntime : IDisposable
             .ToList();
         if (options.Count > 0)
         {
-            var preferred = options.FirstOrDefault(button => !button.Option.IsProceed) ?? options[0];
+            var eventModel = options[0].Event;
+            var decision = DecisionEngine is null
+                ? new EventDecision(options.FirstOrDefault(button => !button.Option.IsProceed)?.Option ?? options[0].Option, "Fallback event choice.")
+                : await DecisionEngine.ChooseEventOptionAsync(eventModel, options.Select(button => button.Option).ToList(), GetCurrentAnalysis(), cancellationToken);
+            var preferred = decision.Option is not null
+                ? options.FirstOrDefault(button => button.Option == decision.Option || button.Option.TextKey == decision.Option.TextKey) ?? options[0]
+                : options[0];
             await WaitForActionWindowAsync(Config.ScreenActionDelayMs, cancellationToken);
-            Log.Info($"[AiBot] Event option selected: {preferred.Option.GetType().Name}");
+            Log.Info($"[AiBot] Event decision: {decision.Reason}");
             await UiHelper.Click(preferred);
             await WaitForActionQueueToDrainAsync(cancellationToken);
             ApplyActionCooldown(Config.ScreenActionDelayMs);
@@ -897,14 +1106,57 @@ public sealed class AiBotRuntime : IDisposable
         return potion.TargetType is TargetType.AnyEnemy or TargetType.AnyAlly or TargetType.AnyPlayer or TargetType.Self or TargetType.TargetedNoCreature;
     }
 
+    private static Creature? ChooseCombatTarget(CardModel card, Player player, IReadOnlyList<Creature> enemies)
+    {
+        return card.TargetType switch
+        {
+            TargetType.AnyEnemy => enemies.Where(enemy => enemy.IsAlive).OrderBy(enemy => enemy.CurrentHp).ThenBy(enemy => enemy.Block).FirstOrDefault(),
+            TargetType.AnyAlly => GetCombatAllies(player).OrderBy(ally => ally.CurrentHp / (float)Math.Max(1, ally.MaxHp)).ThenBy(ally => ally.CurrentHp).FirstOrDefault(),
+            _ => null
+        };
+    }
+
+    private static string? GetRewardAlternativeLabel(NCardRewardAlternativeButton button)
+    {
+        var label = button.GetNodeOrNull<MegaLabel>("Label");
+        return label?.Text?.Trim();
+    }
+
+    private static HashSet<NRewardButton> GetSkippedRewardButtons(NRewardsScreen screen)
+    {
+        var field = typeof(NRewardsScreen).GetField("_skippedRewardButtons", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        if (field?.GetValue(screen) is IEnumerable<Control> controls)
+        {
+            return controls.OfType<NRewardButton>().ToHashSet();
+        }
+
+        return new HashSet<NRewardButton>();
+    }
+
     private static Creature? ChoosePotionTarget(PotionModel potion, Player player, IReadOnlyList<Creature> enemies)
     {
         return potion.TargetType switch
         {
             TargetType.AnyEnemy => enemies.Where(enemy => enemy.IsAlive).OrderBy(enemy => enemy.CurrentHp).FirstOrDefault(),
-            TargetType.AnyAlly or TargetType.AnyPlayer or TargetType.Self => player.Creature,
+            TargetType.AnyAlly => GetCombatAllies(player).OrderBy(ally => ally.CurrentHp / (float)Math.Max(1, ally.MaxHp)).ThenBy(ally => ally.CurrentHp).FirstOrDefault(),
+            TargetType.AnyPlayer or TargetType.Self => player.Creature,
             _ => null
         };
+    }
+
+    private static IEnumerable<Creature> GetCombatAllies(Player player)
+    {
+        yield return player.Creature;
+
+        if (player.PlayerCombatState is null)
+        {
+            yield break;
+        }
+
+        foreach (var pet in player.PlayerCombatState.Pets.Where(pet => pet.IsAlive))
+        {
+            yield return pet;
+        }
     }
 
     private static async Task<bool> TryPurchaseMerchantEntryAsync(MerchantEntry entry, MerchantInventory inventory)

@@ -19,6 +19,10 @@ public sealed class GuideKnowledgeBase
 
     public string KnowledgeMarkdown { get; private set; } = string.Empty;
 
+    public string CoreMechanicsSummary { get; private set; } = string.Empty;
+
+    public IReadOnlyDictionary<int, string> CharacterGuideMarkdownById { get; private set; } = new Dictionary<int, string>();
+
     public IReadOnlyList<CharacterGuideEntry> Characters { get; private set; } = Array.Empty<CharacterGuideEntry>();
 
     public IReadOnlyList<BuildGuideEntry> Builds { get; private set; } = Array.Empty<BuildGuideEntry>();
@@ -41,8 +45,10 @@ public sealed class GuideKnowledgeBase
         Builds = LoadJson<List<BuildGuideEntry>>("builds_full.json") ?? new List<BuildGuideEntry>();
         Cards = LoadJson<List<CardGuideEntry>>("cards_full.json") ?? new List<CardGuideEntry>();
         Relics = LoadJson<List<RelicGuideEntry>>("relics_full.json") ?? new List<RelicGuideEntry>();
+        CharacterGuideMarkdownById = LoadCharacterGuideMarkdown();
+        CoreMechanicsSummary = BuildCoreMechanicsSummary();
 
-        Log.Info($"[AiBot] Knowledge base loaded. Characters={Characters.Count}, Builds={Builds.Count}, Cards={Cards.Count}, Relics={Relics.Count}");
+        Log.Info($"[AiBot] Knowledge base loaded. Characters={Characters.Count}, CharacterGuides={CharacterGuideMarkdownById.Count}, Builds={Builds.Count}, Cards={Cards.Count}, Relics={Relics.Count}");
     }
 
     public IEnumerable<BuildGuideEntry> GetBuildsForCharacter(int characterId)
@@ -98,7 +104,7 @@ public sealed class GuideKnowledgeBase
         return string.Join("\n", lines);
     }
 
-    public string BuildPotionSummary(IEnumerable<string> potionNames, int maxEntries = 6)
+    public string BuildPotionSummary(IEnumerable<string> potionNames, int maxEntries = 6, int? characterId = null)
     {
         var list = potionNames.Take(maxEntries).ToList();
         if (list.Count == 0)
@@ -106,7 +112,7 @@ public sealed class GuideKnowledgeBase
             return string.Empty;
         }
 
-        var snippets = ExtractMarkdownSnippets(list, 4, 140);
+        var snippets = ExtractMarkdownSnippets(list, 4, 140, characterId);
         var lines = list.Select(name => $"- {name}").ToList();
         if (snippets.Count > 0)
         {
@@ -121,10 +127,25 @@ public sealed class GuideKnowledgeBase
     {
         var sb = new StringBuilder();
         var brief = BuildCharacterBrief(characterId);
+        var characterGuideSummary = BuildCharacterGuideSummary(characterId);
         if (!string.IsNullOrWhiteSpace(brief))
         {
             sb.AppendLine("Character Guide:");
             sb.AppendLine(brief);
+        }
+
+        if (!string.IsNullOrWhiteSpace(characterGuideSummary))
+        {
+            sb.AppendLine();
+            sb.AppendLine("Character Deep Guide:");
+            sb.AppendLine(characterGuideSummary);
+        }
+
+        if (!string.IsNullOrWhiteSpace(CoreMechanicsSummary))
+        {
+            sb.AppendLine();
+            sb.AppendLine("Core Mechanics:");
+            sb.AppendLine(CoreMechanicsSummary);
         }
 
         var deckList = deckEntries.Take(maxCards).ToList();
@@ -154,7 +175,7 @@ public sealed class GuideKnowledgeBase
         var potionList = potionNames.Take(4).ToList();
         if (potionList.Count > 0)
         {
-            var potionSummary = BuildPotionSummary(potionList, 4);
+            var potionSummary = BuildPotionSummary(potionList, 4, characterId);
             if (!string.IsNullOrWhiteSpace(potionSummary))
             {
                 sb.AppendLine();
@@ -163,7 +184,7 @@ public sealed class GuideKnowledgeBase
             }
         }
 
-        var snippets = ExtractMarkdownSnippets(deckList.Concat(relicList).Concat(potionList), 6, 180);
+        var snippets = ExtractMarkdownSnippets(deckList.Concat(relicList).Concat(potionList), 6, 180, characterId);
         if (snippets.Count > 0)
         {
             sb.AppendLine();
@@ -174,7 +195,7 @@ public sealed class GuideKnowledgeBase
             }
         }
 
-        return TrimSnippet(sb.ToString().Trim(), 4000);
+        return TrimSnippet(sb.ToString().Trim(), 5000);
     }
 
     public string BuildCharacterBrief(int characterId)
@@ -204,6 +225,31 @@ public sealed class GuideKnowledgeBase
         }
 
         return sb.ToString().Trim();
+    }
+
+    public string BuildCharacterGuideSummary(int characterId)
+    {
+        if (!CharacterGuideMarkdownById.TryGetValue(characterId, out var markdown) || string.IsNullOrWhiteSpace(markdown))
+        {
+            return string.Empty;
+        }
+
+        var lines = new List<string>();
+        AddFirstHeading(lines, markdown);
+        AddParagraphAfterMarker(lines, markdown, "### 描述");
+        AddParagraphAfterMarker(lines, markdown, "### 游戏风格");
+        AddRecommendedBuildSummaries(lines, markdown, 2);
+        AddHighlightedCardNames(lines, markdown, "### 稀有卡牌 (Rare)", "Rare cards to value", 4);
+        AddHighlightedCardNames(lines, markdown, "### 罕见卡牌 (Uncommon)", "Uncommon enablers", 4);
+
+        var deduped = lines
+            .Select(line => TrimSnippet(CleanMarkdownLine(line), 220))
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .Distinct()
+            .Take(14)
+            .ToList();
+
+        return string.Join("\n", deduped.Select(line => $"- {line}"));
     }
 
     public bool MentionsCard(string normalizedCardName, BuildGuideEntry build)
@@ -240,7 +286,7 @@ public sealed class GuideKnowledgeBase
             .Replace("\"", string.Empty);
     }
 
-    private List<string> ExtractMarkdownSnippets(IEnumerable<string> terms, int maxSnippets, int snippetLength)
+    private List<string> ExtractMarkdownSnippets(IEnumerable<string> terms, int maxSnippets, int snippetLength, int? characterId = null)
     {
         var normalizedTerms = terms
             .Select(RemoveCountSuffix)
@@ -254,7 +300,13 @@ public sealed class GuideKnowledgeBase
             return new List<string>();
         }
 
-        var paragraphs = string.Join("\n\n", new[] { OverviewMarkdown, KnowledgeMarkdown })
+        var markdownSources = new List<string> { OverviewMarkdown, KnowledgeMarkdown };
+        if (characterId is not null && CharacterGuideMarkdownById.TryGetValue(characterId.Value, out var characterMarkdown) && !string.IsNullOrWhiteSpace(characterMarkdown))
+        {
+            markdownSources.Add(characterMarkdown);
+        }
+
+        var paragraphs = string.Join("\n\n", markdownSources)
             .Split(new[] { "\r\n\r\n", "\n\n" }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         return paragraphs
@@ -267,6 +319,353 @@ public sealed class GuideKnowledgeBase
             .Distinct()
             .Take(maxSnippets)
             .ToList();
+    }
+
+    private string BuildCoreMechanicsSummary()
+    {
+        var lines = new List<string>();
+
+        AddFirstMatchingLine(lines, OverviewMarkdown,
+            "能量 (Energy)",
+            "格挡 (Block)",
+            "抽牌 (Draw)");
+
+        AddFirstMatchingLine(lines, KnowledgeMarkdown,
+            "X费用",
+            "牌组精简",
+            "能量曲线",
+            "防御手段");
+
+        AddSectionBullets(lines, KnowledgeMarkdown, "### 回合流程", 8);
+        AddSectionBullets(lines, KnowledgeMarkdown, "### 关键词解释", 8, new[]
+        {
+            "力量",
+            "敏捷",
+            "易伤",
+            "虚弱",
+            "毒素",
+            "格挡",
+            "消耗",
+            "抽牌"
+        });
+
+        var deduped = lines
+            .Select(line => TrimSnippet(line.Replace("**", string.Empty).Replace("|", " ").Replace("- ", string.Empty).Trim(), 220))
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .Distinct()
+            .Take(12)
+            .ToList();
+
+        return string.Join("\n", deduped.Select(line => $"- {line}"));
+    }
+
+    private Dictionary<int, string> LoadCharacterGuideMarkdown()
+    {
+        var guides = new Dictionary<int, string>();
+        foreach (var character in Characters)
+        {
+            var fileName = ResolveCharacterGuideFileName(character);
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                continue;
+            }
+
+            var markdown = ReadTextIfExists(fileName);
+            if (!string.IsNullOrWhiteSpace(markdown))
+            {
+                guides[character.Id] = markdown;
+            }
+        }
+
+        return guides;
+    }
+
+    private static string ResolveCharacterGuideFileName(CharacterGuideEntry character)
+    {
+        if (!string.IsNullOrWhiteSpace(character.Slug))
+        {
+            return $"{character.Slug}_complete_guide.md";
+        }
+
+        var englishName = character.NameEn?.Trim();
+        if (!string.IsNullOrWhiteSpace(englishName))
+        {
+            if (englishName.StartsWith("The ", StringComparison.OrdinalIgnoreCase))
+            {
+                englishName = englishName[4..];
+            }
+
+            return englishName.ToLowerInvariant().Replace(' ', '_') + "_complete_guide.md";
+        }
+
+        return string.Empty;
+    }
+
+    private static void AddFirstMatchingLine(List<string> target, string text, params string[] markers)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        var lines = text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var marker in markers)
+        {
+            var match = lines.FirstOrDefault(line => line.Contains(marker, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(match))
+            {
+                target.Add(match);
+            }
+        }
+    }
+
+    private static void AddRecommendedBuildSummaries(List<string> target, string markdown, int maxBuilds)
+    {
+        if (string.IsNullOrWhiteSpace(markdown) || maxBuilds <= 0)
+        {
+            return;
+        }
+
+        var lines = markdown.Split(new[] { '\r', '\n' }, StringSplitOptions.None);
+        var start = Array.FindIndex(lines, line => line.Trim().Equals("## 🎯 推荐卡组构建", StringComparison.OrdinalIgnoreCase));
+        if (start < 0)
+        {
+            return;
+        }
+
+        var buildsAdded = 0;
+        for (var i = start + 1; i < lines.Length && buildsAdded < maxBuilds; i++)
+        {
+            var trimmed = lines[i].Trim();
+            if (string.IsNullOrWhiteSpace(trimmed))
+            {
+                continue;
+            }
+
+            if (trimmed.StartsWith("## ", StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            if (!trimmed.StartsWith("### ", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var buildName = trimmed[4..].Trim();
+            var intro = string.Empty;
+            var core = string.Empty;
+
+            for (var j = i + 1; j < lines.Length; j++)
+            {
+                var detail = lines[j].Trim();
+                if (string.IsNullOrWhiteSpace(detail))
+                {
+                    continue;
+                }
+
+                if (detail.StartsWith("### ", StringComparison.Ordinal) || detail.StartsWith("## ", StringComparison.Ordinal))
+                {
+                    i = j - 1;
+                    break;
+                }
+
+                if (detail.StartsWith("**简介:**", StringComparison.Ordinal))
+                {
+                    intro = ExtractLabeledValue(detail, "**简介:**");
+                    continue;
+                }
+
+                if (detail.StartsWith("**核心机制:**", StringComparison.Ordinal))
+                {
+                    core = ExtractLabeledValue(detail, "**核心机制:**");
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(intro) && !detail.StartsWith("**", StringComparison.Ordinal) && detail != "---")
+                {
+                    intro = detail;
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(core) && !detail.StartsWith("**", StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(intro))
+                {
+                    core = detail;
+                }
+            }
+
+            target.Add($"Recommended build: {buildName}");
+            if (!string.IsNullOrWhiteSpace(intro))
+            {
+                target.Add($"Plan: {intro}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(core))
+            {
+                target.Add($"Mechanics: {core}");
+            }
+
+            buildsAdded++;
+        }
+    }
+
+    private static void AddHighlightedCardNames(List<string> target, string markdown, string sectionHeader, string label, int maxCards)
+    {
+        if (string.IsNullOrWhiteSpace(markdown) || maxCards <= 0)
+        {
+            return;
+        }
+
+        var lines = markdown.Split(new[] { '\r', '\n' }, StringSplitOptions.None);
+        var start = Array.FindIndex(lines, line => line.Trim().Equals(sectionHeader, StringComparison.OrdinalIgnoreCase));
+        if (start < 0)
+        {
+            return;
+        }
+
+        var cards = new List<string>();
+        for (var i = start + 1; i < lines.Length && cards.Count < maxCards; i++)
+        {
+            var trimmed = lines[i].Trim();
+            if (string.IsNullOrWhiteSpace(trimmed))
+            {
+                continue;
+            }
+
+            if (trimmed.StartsWith("### ", StringComparison.Ordinal) || trimmed.StartsWith("## ", StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            if (trimmed.StartsWith("#### ", StringComparison.Ordinal))
+            {
+                cards.Add(trimmed[5..].Trim());
+            }
+        }
+
+        if (cards.Count > 0)
+        {
+            target.Add($"{label}: {string.Join(", ", cards)}");
+        }
+    }
+
+    private static string ExtractLabeledValue(string line, string label)
+    {
+        if (!line.StartsWith(label, StringComparison.Ordinal))
+        {
+            return line.Trim();
+        }
+
+        return line[label.Length..].Trim();
+    }
+
+    private static void AddSectionBullets(List<string> target, string markdown, string sectionHeader, int maxLines, IReadOnlyList<string>? preferredTerms = null)
+    {
+        if (string.IsNullOrWhiteSpace(markdown))
+        {
+            return;
+        }
+
+        var lines = markdown.Split(new[] { '\r', '\n' }, StringSplitOptions.None);
+        var start = Array.FindIndex(lines, line => line.Trim().Equals(sectionHeader, StringComparison.OrdinalIgnoreCase));
+        if (start < 0)
+        {
+            return;
+        }
+
+        for (var i = start + 1; i < lines.Length && target.Count < 24; i++)
+        {
+            var trimmed = lines[i].Trim();
+            if (string.IsNullOrWhiteSpace(trimmed))
+            {
+                continue;
+            }
+
+            if (trimmed.StartsWith("## ", StringComparison.Ordinal) || trimmed.StartsWith("### ", StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            if (preferredTerms is not null && preferredTerms.Count > 0)
+            {
+                if (!preferredTerms.Any(term => trimmed.Contains(term, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+            }
+
+            if (trimmed.StartsWith("-") || char.IsDigit(trimmed[0]) || trimmed.StartsWith("|"))
+            {
+                target.Add(trimmed);
+                if (target.Count >= maxLines)
+                {
+                    return;
+                }
+            }
+        }
+    }
+
+    private static void AddFirstHeading(List<string> target, string markdown)
+    {
+        if (string.IsNullOrWhiteSpace(markdown))
+        {
+            return;
+        }
+
+        var heading = markdown.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault(line => line.StartsWith("# ", StringComparison.Ordinal));
+
+        if (!string.IsNullOrWhiteSpace(heading))
+        {
+            target.Add(heading);
+        }
+    }
+
+    private static void AddParagraphAfterMarker(List<string> target, string markdown, string marker)
+    {
+        if (string.IsNullOrWhiteSpace(markdown))
+        {
+            return;
+        }
+
+        var lines = markdown.Split(new[] { '\r', '\n' }, StringSplitOptions.None);
+        var start = Array.FindIndex(lines, line => line.Trim().Equals(marker, StringComparison.OrdinalIgnoreCase));
+        if (start < 0)
+        {
+            return;
+        }
+
+        for (var i = start + 1; i < lines.Length; i++)
+        {
+            var trimmed = lines[i].Trim();
+            if (string.IsNullOrWhiteSpace(trimmed))
+            {
+                continue;
+            }
+
+            if (trimmed.StartsWith("## ", StringComparison.Ordinal) || trimmed.StartsWith("### ", StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            if (trimmed.StartsWith(">", StringComparison.Ordinal) || trimmed == "---")
+            {
+                continue;
+            }
+
+            target.Add(trimmed);
+            return;
+        }
+    }
+
+    private static string CleanMarkdownLine(string value)
+    {
+        return value
+            .Replace("#", string.Empty)
+            .Replace("**", string.Empty)
+            .Replace("|", " ")
+            .Replace("`", string.Empty)
+            .Trim();
     }
 
     private static string TrimSnippet(string? value, int maxLength)

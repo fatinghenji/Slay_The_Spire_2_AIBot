@@ -3,6 +3,8 @@ using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Merchant;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.RestSite;
+using MegaCrit.Sts2.Core.Events;
+using MegaCrit.Sts2.Core.Events.Custom.CrystalSphereEvent;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Models;
@@ -79,6 +81,78 @@ public sealed class HybridDecisionEngine : IAiDecisionEngine, IDisposable
         return Publish(await _heuristic.ChooseCardRewardAsync(options, analysis, cancellationToken));
     }
 
+    public async Task<CardSelectionDecision> ChooseCardSelectionAsync(AiCardSelectionContext request, IReadOnlyList<CardModel> options, RunAnalysis analysis, CancellationToken cancellationToken)
+    {
+        if (_config.CanUseCloud && _cloud is not null)
+        {
+            try
+            {
+                return Publish(await _cloud.ChooseCardSelectionAsync(request, options, analysis, cancellationToken));
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"[AiBot] Cloud decision failed. Falling back to heuristics. {ex.Message}");
+                return Publish(AnnotateFallback(await _heuristic.ChooseCardSelectionAsync(request, options, analysis, cancellationToken), ex.Message));
+            }
+        }
+
+        return Publish(await _heuristic.ChooseCardSelectionAsync(request, options, analysis, cancellationToken));
+    }
+
+    public async Task<CardRewardChoiceDecision> ChooseCardRewardChoiceAsync(AiCardSelectionContext request, IReadOnlyList<CardModel> options, IReadOnlyList<DecisionOption> alternatives, RunAnalysis analysis, CancellationToken cancellationToken)
+    {
+        if (_config.CanUseCloud && _cloud is not null)
+        {
+            try
+            {
+                return Publish(await _cloud.ChooseCardRewardChoiceAsync(request, options, alternatives, analysis, cancellationToken));
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"[AiBot] Cloud decision failed. Falling back to heuristics. {ex.Message}");
+                return Publish(AnnotateFallback(await _heuristic.ChooseCardRewardChoiceAsync(request, options, alternatives, analysis, cancellationToken), ex.Message));
+            }
+        }
+
+        return Publish(await _heuristic.ChooseCardRewardChoiceAsync(request, options, alternatives, analysis, cancellationToken));
+    }
+
+    public async Task<BundleChoiceDecision> ChooseBundleAsync(AiCardSelectionContext request, IReadOnlyList<CardBundleOption> bundles, RunAnalysis analysis, CancellationToken cancellationToken)
+    {
+        if (_config.CanUseCloud && _cloud is not null)
+        {
+            try
+            {
+                return Publish(await _cloud.ChooseBundleAsync(request, bundles, analysis, cancellationToken));
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"[AiBot] Cloud decision failed. Falling back to heuristics. {ex.Message}");
+                return Publish(AnnotateFallback(await _heuristic.ChooseBundleAsync(request, bundles, analysis, cancellationToken), ex.Message));
+            }
+        }
+
+        return Publish(await _heuristic.ChooseBundleAsync(request, bundles, analysis, cancellationToken));
+    }
+
+    public async Task<CrystalSphereActionDecision> ChooseCrystalSphereActionAsync(CrystalSphereMinigame minigame, RunAnalysis analysis, CancellationToken cancellationToken)
+    {
+        if (_config.CanUseCloud && _cloud is not null)
+        {
+            try
+            {
+                return Publish(await _cloud.ChooseCrystalSphereActionAsync(minigame, analysis, cancellationToken));
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"[AiBot] Cloud decision failed. Falling back to heuristics. {ex.Message}");
+                return Publish(AnnotateFallback(await _heuristic.ChooseCrystalSphereActionAsync(minigame, analysis, cancellationToken), ex.Message));
+            }
+        }
+
+        return Publish(await _heuristic.ChooseCrystalSphereActionAsync(minigame, analysis, cancellationToken));
+    }
+
     public async Task<RewardDecision> ChooseRewardAsync(IReadOnlyList<NRewardButton> options, bool hasOpenPotionSlots, RunAnalysis analysis, CancellationToken cancellationToken)
     {
         if (_config.CanUseCloud && _cloud is not null)
@@ -151,6 +225,42 @@ public sealed class HybridDecisionEngine : IAiDecisionEngine, IDisposable
         return Publish(await _heuristic.ChooseMapPointAsync(options, currentHp, maxHp, gold, analysis, cancellationToken));
     }
 
+    public async Task<EventDecision> ChooseEventOptionAsync(EventModel eventModel, IReadOnlyList<EventOption> options, RunAnalysis analysis, CancellationToken cancellationToken)
+    {
+        if (_config.CanUseCloud && _cloud is not null)
+        {
+            try
+            {
+                return Publish(await _cloud.ChooseEventOptionAsync(eventModel, options, analysis, cancellationToken));
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"[AiBot] Cloud decision failed. Falling back to heuristics. {ex.Message}");
+                return Publish(AnnotateFallback(await _heuristic.ChooseEventOptionAsync(eventModel, options, analysis, cancellationToken), ex.Message));
+            }
+        }
+
+        return Publish(await _heuristic.ChooseEventOptionAsync(eventModel, options, analysis, cancellationToken));
+    }
+
+    public async Task<RelicChoiceDecision> ChooseRelicAsync(IReadOnlyList<RelicModel> options, string source, bool allowSkip, RunAnalysis analysis, CancellationToken cancellationToken)
+    {
+        if (_config.CanUseCloud && _cloud is not null)
+        {
+            try
+            {
+                return Publish(await _cloud.ChooseRelicAsync(options, source, allowSkip, analysis, cancellationToken));
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"[AiBot] Cloud decision failed. Falling back to heuristics. {ex.Message}");
+                return Publish(AnnotateFallback(await _heuristic.ChooseRelicAsync(options, source, allowSkip, analysis, cancellationToken), ex.Message));
+            }
+        }
+
+        return Publish(await _heuristic.ChooseRelicAsync(options, source, allowSkip, analysis, cancellationToken));
+    }
+
     private static CombatDecision AnnotateFallback(CombatDecision decision, string errorMessage)
     {
         return decision with
@@ -191,6 +301,46 @@ public sealed class HybridDecisionEngine : IAiDecisionEngine, IDisposable
         };
     }
 
+    private static CardSelectionDecision AnnotateFallback(CardSelectionDecision decision, string errorMessage)
+    {
+        return decision with
+        {
+            Trace = decision.Trace is null
+                ? new DecisionTrace("Card Selection", "Local/Fallback", decision.Reason, $"Cloud decision failed and local heuristic was used instead. Error: {errorMessage}")
+                : decision.Trace with { Source = "Local/Fallback", Details = $"{decision.Trace.Details} Cloud fallback reason: {errorMessage}" }
+        };
+    }
+
+    private static CardRewardChoiceDecision AnnotateFallback(CardRewardChoiceDecision decision, string errorMessage)
+    {
+        return decision with
+        {
+            Trace = decision.Trace is null
+                ? new DecisionTrace("Card Reward", "Local/Fallback", decision.Reason, $"Cloud decision failed and local heuristic was used instead. Error: {errorMessage}")
+                : decision.Trace with { Source = "Local/Fallback", Details = $"{decision.Trace.Details} Cloud fallback reason: {errorMessage}" }
+        };
+    }
+
+    private static BundleChoiceDecision AnnotateFallback(BundleChoiceDecision decision, string errorMessage)
+    {
+        return decision with
+        {
+            Trace = decision.Trace is null
+                ? new DecisionTrace("Bundle Choice", "Local/Fallback", decision.Reason, $"Cloud decision failed and local heuristic was used instead. Error: {errorMessage}")
+                : decision.Trace with { Source = "Local/Fallback", Details = $"{decision.Trace.Details} Cloud fallback reason: {errorMessage}" }
+        };
+    }
+
+    private static CrystalSphereActionDecision AnnotateFallback(CrystalSphereActionDecision decision, string errorMessage)
+    {
+        return decision with
+        {
+            Trace = decision.Trace is null
+                ? new DecisionTrace("Crystal Sphere", "Local/Fallback", decision.Reason, $"Cloud decision failed and local heuristic was used instead. Error: {errorMessage}")
+                : decision.Trace with { Source = "Local/Fallback", Details = $"{decision.Trace.Details} Cloud fallback reason: {errorMessage}" }
+        };
+    }
+
     private static MapDecision AnnotateFallback(MapDecision decision, string errorMessage)
     {
         return decision with
@@ -207,6 +357,26 @@ public sealed class HybridDecisionEngine : IAiDecisionEngine, IDisposable
         {
             Trace = decision.Trace is null
                 ? new DecisionTrace("Shop", "Local/Fallback", decision.Reason, $"Cloud decision failed and local heuristic was used instead. Error: {errorMessage}")
+                : decision.Trace with { Source = "Local/Fallback", Details = $"{decision.Trace.Details} Cloud fallback reason: {errorMessage}" }
+        };
+    }
+
+    private static EventDecision AnnotateFallback(EventDecision decision, string errorMessage)
+    {
+        return decision with
+        {
+            Trace = decision.Trace is null
+                ? new DecisionTrace("Event", "Local/Fallback", decision.Reason, $"Cloud decision failed and local heuristic was used instead. Error: {errorMessage}")
+                : decision.Trace with { Source = "Local/Fallback", Details = $"{decision.Trace.Details} Cloud fallback reason: {errorMessage}" }
+        };
+    }
+
+    private static RelicChoiceDecision AnnotateFallback(RelicChoiceDecision decision, string errorMessage)
+    {
+        return decision with
+        {
+            Trace = decision.Trace is null
+                ? new DecisionTrace("Relic Choice", "Local/Fallback", decision.Reason, $"Cloud decision failed and local heuristic was used instead. Error: {errorMessage}")
                 : decision.Trace with { Source = "Local/Fallback", Details = $"{decision.Trace.Details} Cloud fallback reason: {errorMessage}" }
         };
     }
@@ -261,6 +431,46 @@ public sealed class HybridDecisionEngine : IAiDecisionEngine, IDisposable
         return decision;
     }
 
+    private static CardSelectionDecision Publish(CardSelectionDecision decision)
+    {
+        if (decision.Trace is not null)
+        {
+            AiBotDecisionFeed.Publish(decision.Trace);
+        }
+
+        return decision;
+    }
+
+    private static CardRewardChoiceDecision Publish(CardRewardChoiceDecision decision)
+    {
+        if (decision.Trace is not null)
+        {
+            AiBotDecisionFeed.Publish(decision.Trace);
+        }
+
+        return decision;
+    }
+
+    private static BundleChoiceDecision Publish(BundleChoiceDecision decision)
+    {
+        if (decision.Trace is not null)
+        {
+            AiBotDecisionFeed.Publish(decision.Trace);
+        }
+
+        return decision;
+    }
+
+    private static CrystalSphereActionDecision Publish(CrystalSphereActionDecision decision)
+    {
+        if (decision.Trace is not null)
+        {
+            AiBotDecisionFeed.Publish(decision.Trace);
+        }
+
+        return decision;
+    }
+
     private static MapDecision Publish(MapDecision decision)
     {
         if (decision.Trace is not null)
@@ -282,6 +492,26 @@ public sealed class HybridDecisionEngine : IAiDecisionEngine, IDisposable
     }
 
     private static RestDecision Publish(RestDecision decision)
+    {
+        if (decision.Trace is not null)
+        {
+            AiBotDecisionFeed.Publish(decision.Trace);
+        }
+
+        return decision;
+    }
+
+    private static EventDecision Publish(EventDecision decision)
+    {
+        if (decision.Trace is not null)
+        {
+            AiBotDecisionFeed.Publish(decision.Trace);
+        }
+
+        return decision;
+    }
+
+    private static RelicChoiceDecision Publish(RelicChoiceDecision decision)
     {
         if (decision.Trace is not null)
         {
