@@ -3,6 +3,7 @@ using aibot.Scripts.Agent.Handlers;
 using aibot.Scripts.Agent.Skills;
 using aibot.Scripts.Agent.Tools;
 using aibot.Scripts.Core;
+using aibot.Scripts.Ui;
 
 namespace aibot.Scripts.Agent;
 
@@ -44,6 +45,7 @@ public sealed class AgentCore
         _handlerFactories[AgentMode.Assist] = reason => new AssistModeHandler(runtime, reason);
         _handlerFactories[AgentMode.QnA] = reason => new QnAModeHandler(runtime, reason);
         Registry = BuildRegistry(runtime);
+        AgentChatDialog.EnsureCreated(runtime);
         IsInitialized = true;
         Log.Info($"[AiBot.Agent] Initialized. DefaultMode={CurrentMode}");
     }

@@ -20,6 +20,10 @@
     "defaultMode": "fullAuto",
     "confirmOnModeSwitch": true
   },
+  "ui": {
+    "showChatDialog": true,
+    "chatHotkey": "Tab"
+  },
   "logging": {
     "verbose": true,
     "logDecisionPrompt": false

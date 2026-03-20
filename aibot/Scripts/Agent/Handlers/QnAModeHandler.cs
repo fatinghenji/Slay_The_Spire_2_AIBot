@@ -1,5 +1,6 @@
 using MegaCrit.Sts2.Core.Logging;
 using aibot.Scripts.Core;
+using aibot.Scripts.Ui;
 
 namespace aibot.Scripts.Agent.Handlers;
 
@@ -19,12 +20,15 @@ public sealed class QnAModeHandler : IAgentModeHandler
     public Task OnActivateAsync(CancellationToken cancellationToken)
     {
         _runtime.DeactivateLegacyFullAuto();
+        AgentChatDialog.EnsureCreated(_runtime);
+        AgentChatDialog.ShowForMode(Mode, "问答模式已开启：当前阶段优先提供模式占位回复，后续会接知识检索与受限问答。 ");
         Log.Info($"[AiBot.Agent] QnA mode entered. Reason={_activationReason}");
         return Task.CompletedTask;
     }
 
     public Task OnDeactivateAsync()
     {
+        AgentChatDialog.HideDialog();
         return Task.CompletedTask;
     }
 

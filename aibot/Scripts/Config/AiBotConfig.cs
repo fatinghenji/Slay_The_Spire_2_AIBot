@@ -47,6 +47,9 @@ public sealed class AiBotConfig
     [JsonPropertyName("agent")]
     public AgentRuntimeConfig Agent { get; set; } = new();
 
+    [JsonPropertyName("ui")]
+    public AgentUiConfig Ui { get; set; } = new();
+
     [JsonIgnore]
     public bool CanUseCloud =>
         PreferCloud &&
@@ -98,4 +101,13 @@ public sealed class AgentRuntimeConfig
             _ => AgentMode.FullAuto
         };
     }
+}
+
+public sealed class AgentUiConfig
+{
+    [JsonPropertyName("showChatDialog")]
+    public bool ShowChatDialog { get; set; } = true;
+
+    [JsonPropertyName("chatHotkey")]
+    public string ChatHotkey { get; set; } = "Tab";
 }
