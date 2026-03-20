@@ -1,5 +1,7 @@
 using MegaCrit.Sts2.Core.Logging;
 using aibot.Scripts.Agent.Handlers;
+using aibot.Scripts.Agent.Skills;
+using aibot.Scripts.Agent.Tools;
 using aibot.Scripts.Core;
 
 namespace aibot.Scripts.Agent;
@@ -17,6 +19,8 @@ public sealed class AgentCore
     public bool IsInitialized { get; private set; }
 
     public AgentMode CurrentMode { get; private set; } = AgentMode.FullAuto;
+
+    public AgentSkillRegistry Registry { get; private set; } = new();
 
     public event Action<AgentModeChangeRequest>? ModeChangeRequested;
 
@@ -39,8 +43,41 @@ public sealed class AgentCore
         _handlerFactories[AgentMode.SemiAuto] = reason => new SemiAutoModeHandler(runtime, reason);
         _handlerFactories[AgentMode.Assist] = reason => new AssistModeHandler(runtime, reason);
         _handlerFactories[AgentMode.QnA] = reason => new QnAModeHandler(runtime, reason);
+        Registry = BuildRegistry(runtime);
         IsInitialized = true;
         Log.Info($"[AiBot.Agent] Initialized. DefaultMode={CurrentMode}");
+    }
+
+    private static AgentSkillRegistry BuildRegistry(AiBotRuntime runtime)
+    {
+        var registry = new AgentSkillRegistry();
+
+        registry.RegisterSkill(new PlayCardSkill(runtime));
+        registry.RegisterSkill(new UsePotionSkill(runtime));
+        registry.RegisterSkill(new EndTurnSkill(runtime));
+        registry.RegisterSkill(new NavigateMapSkill(runtime));
+        registry.RegisterSkill(new PickCardRewardSkill(runtime));
+        registry.RegisterSkill(new SelectCardSkill(runtime));
+        registry.RegisterSkill(new ChooseBundleSkill(runtime));
+        registry.RegisterSkill(new ChooseRelicSkill(runtime));
+        registry.RegisterSkill(new CrystalSphereSkill(runtime));
+        registry.RegisterSkill(new PurchaseShopSkill(runtime));
+        registry.RegisterSkill(new RestSiteSkill(runtime));
+        registry.RegisterSkill(new ChooseEventOptionSkill(runtime));
+        registry.RegisterSkill(new ClaimRewardSkill(runtime));
+
+        registry.RegisterTool(new InspectDeckTool(runtime));
+        registry.RegisterTool(new InspectRelicsTool(runtime));
+        registry.RegisterTool(new InspectPotionsTool(runtime));
+        registry.RegisterTool(new InspectEnemyTool(runtime));
+        registry.RegisterTool(new InspectMapTool(runtime));
+        registry.RegisterTool(new LookupCardTool(runtime));
+        registry.RegisterTool(new LookupRelicTool(runtime));
+        registry.RegisterTool(new LookupBuildTool(runtime));
+        registry.RegisterTool(new CalculateDamageTool(runtime));
+        registry.RegisterTool(new AnalyzeRunTool(runtime));
+
+        return registry;
     }
 
     public Task ActivateDefaultModeAsync(string reason)
