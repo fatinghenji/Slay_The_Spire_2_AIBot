@@ -119,4 +119,7 @@ public sealed class AgentUiConfig
 
     [JsonPropertyName("modePanelStartVisible")]
     public bool ModePanelStartVisible { get; set; } = true;
+
+    [JsonPropertyName("showRecommendOverlay")]
+    public bool ShowRecommendOverlay { get; set; } = true;
 }

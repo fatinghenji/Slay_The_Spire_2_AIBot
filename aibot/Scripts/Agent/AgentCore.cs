@@ -47,6 +47,7 @@ public sealed class AgentCore
         Registry = BuildRegistry(runtime);
         AgentChatDialog.EnsureCreated(runtime);
         AgentModePanel.EnsureCreated(runtime);
+        AgentRecommendOverlay.EnsureCreated(runtime);
         IsInitialized = true;
         Log.Info($"[AiBot.Agent] Initialized. DefaultMode={CurrentMode}");
     }
