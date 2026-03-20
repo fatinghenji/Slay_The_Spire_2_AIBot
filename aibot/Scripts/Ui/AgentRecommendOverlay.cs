@@ -1,16 +1,27 @@
 using Godot;
 using MegaCrit.Sts2.Core.AutoSlay.Helpers;
+using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.Entities.Creatures;
+using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Entities.Merchant;
+using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Entities.RestSite;
+using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
+using MegaCrit.Sts2.Core.Nodes.Events;
 using MegaCrit.Sts2.Core.Nodes.Relics;
+using MegaCrit.Sts2.Core.Nodes.RestSite;
+using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
+using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
 using MegaCrit.Sts2.Core.Runs;
 using aibot.Scripts.Agent;
 using aibot.Scripts.Core;
@@ -128,6 +139,10 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
             }
 
             var added = await TryRefreshOverlayRecommendationAsync()
+                || await TryRefreshCombatRecommendationAsync()
+                || await TryRefreshShopRecommendationAsync()
+                || await TryRefreshRestSiteRecommendationAsync()
+                || await TryRefreshEventRecommendationAsync()
                 || await TryRefreshMapRecommendationAsync();
 
             if (!added)
@@ -282,6 +297,166 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
         return true;
     }
 
+    private async Task<bool> TryRefreshCombatRecommendationAsync()
+    {
+        if (_runtime?.DecisionEngine is null || !CombatManager.Instance.IsInProgress || !CombatManager.Instance.IsPlayPhase)
+        {
+            return false;
+        }
+
+        var runState = RunManager.Instance.DebugOnlyGetState();
+        var player = LocalContext.GetMe(runState);
+        if (player is null)
+        {
+            return false;
+        }
+
+        var hand = PileType.Hand.GetPile(player).Cards.ToList();
+        var playable = hand.Where(CanRecommendPlayCard).ToList();
+        if (playable.Count == 0)
+        {
+            return false;
+        }
+
+        var visibleHolders = UiHelper.FindAll<NCardHolder>(((SceneTree)Engine.GetMainLoop()).Root)
+            .Where(holder => holder.CardModel is not null && holder.IsVisibleInTree())
+            .ToList();
+        if (visibleHolders.Count == 0)
+        {
+            return false;
+        }
+
+        var enemies = player.Creature.CombatState?.HittableEnemies?.Where(enemy => enemy.IsAlive).ToList() ?? new List<Creature>();
+        var analysis = _runtime.GetCurrentAnalysis();
+        var decision = await _runtime.DecisionEngine.ChooseCombatActionAsync(player, playable, enemies, analysis, CancellationToken.None);
+        if (decision.EndTurn || decision.Card is null)
+        {
+            return false;
+        }
+
+        var target = visibleHolders.FirstOrDefault(holder => holder.CardModel == decision.Card || holder.CardModel?.Id == decision.Card.Id);
+        if (target is null)
+        {
+            return false;
+        }
+
+        ReplaceWithSingleBadge(target, decision.Reason, "战斗手牌推荐");
+        return true;
+    }
+
+    private async Task<bool> TryRefreshShopRecommendationAsync()
+    {
+        if (_runtime?.DecisionEngine is null)
+        {
+            return false;
+        }
+
+        var room = GetAbsoluteNodeOrNull<NMerchantRoom>("/root/Game/RootSceneContainer/Run/RoomContainer/MerchantRoom");
+        if (room?.Inventory is null || !room.Inventory.IsVisibleInTree() || !room.Inventory.IsOpen || room.Inventory.Inventory is null)
+        {
+            return false;
+        }
+
+        var runState = RunManager.Instance.DebugOnlyGetState();
+        var player = LocalContext.GetMe(runState);
+        if (player is null)
+        {
+            return false;
+        }
+
+        var inventory = room.Inventory.Inventory;
+        var options = inventory.AllEntries
+            .Where(entry => entry.IsStocked && entry.EnoughGold)
+            .Where(entry => player.HasOpenPotionSlots || entry is not MerchantPotionEntry)
+            .ToList();
+        if (options.Count == 0)
+        {
+            return false;
+        }
+
+        var decision = await _runtime.DecisionEngine.ChooseShopPurchaseAsync(options, player.Gold, player.HasOpenPotionSlots, _runtime.GetCurrentAnalysis(), CancellationToken.None);
+        if (decision.Entry is null)
+        {
+            return false;
+        }
+
+        var slot = room.Inventory.GetAllSlots().FirstOrDefault(candidate => candidate.Entry == decision.Entry);
+        if (slot is null || !slot.IsVisibleInTree())
+        {
+            return false;
+        }
+
+        ReplaceWithSingleBadge(slot, decision.Reason, "商店推荐");
+        return true;
+    }
+
+    private async Task<bool> TryRefreshRestSiteRecommendationAsync()
+    {
+        var room = GetAbsoluteNodeOrNull<NRestSiteRoom>("/root/Game/RootSceneContainer/Run/RoomContainer/RestSiteRoom");
+        if (room is null || _runtime?.DecisionEngine is null)
+        {
+            return false;
+        }
+
+        var runState = RunManager.Instance.DebugOnlyGetState();
+        var player = LocalContext.GetMe(runState);
+        if (player is null)
+        {
+            return false;
+        }
+
+        var buttons = UiHelper.FindAll<NRestSiteButton>(room)
+            .Where(button => button.IsEnabled && button.Visible && button.IsVisibleInTree())
+            .ToList();
+        if (buttons.Count == 0)
+        {
+            return false;
+        }
+
+        var options = buttons.Select(button => button.Option).ToList();
+        var decision = await _runtime.DecisionEngine.ChooseRestSiteOptionAsync(player, options, _runtime.GetCurrentAnalysis(), CancellationToken.None);
+        var target = decision.Option is not null
+            ? buttons.FirstOrDefault(button => button.Option.OptionId == decision.Option.OptionId)
+            : buttons.FirstOrDefault();
+        if (target is null)
+        {
+            return false;
+        }
+
+        ReplaceWithSingleBadge(target, decision.Reason, "休息点推荐");
+        return true;
+    }
+
+    private async Task<bool> TryRefreshEventRecommendationAsync()
+    {
+        var eventRoom = GetAbsoluteNodeOrNull<NEventRoom>("/root/Game/RootSceneContainer/Run/RoomContainer/EventRoom");
+        if (eventRoom is null || !eventRoom.Visible || !eventRoom.IsVisibleInTree() || _runtime?.DecisionEngine is null)
+        {
+            return false;
+        }
+
+        var buttons = UiHelper.FindAll<NEventOptionButton>(eventRoom)
+            .Where(button => button.IsEnabled && !button.Option.IsLocked && button.IsVisibleInTree())
+            .ToList();
+        if (buttons.Count == 0)
+        {
+            return false;
+        }
+
+        var eventModel = buttons[0].Event;
+        var decision = await _runtime.DecisionEngine.ChooseEventOptionAsync(eventModel, buttons.Select(button => button.Option).ToList(), _runtime.GetCurrentAnalysis(), CancellationToken.None);
+        var target = decision.Option is not null
+            ? buttons.FirstOrDefault(button => button.Option == decision.Option || button.Option.TextKey == decision.Option.TextKey)
+            : buttons.FirstOrDefault();
+        if (target is null)
+        {
+            return false;
+        }
+
+        ReplaceWithSingleBadge(target, decision.Reason, "事件选项推荐");
+        return true;
+    }
+
     private void ReplaceWithSingleBadge(Control target, string reason, string category)
     {
         ClearBadges();
@@ -355,7 +530,65 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
             return "map:" + string.Join("|", coords);
         }
 
+        if (CombatManager.Instance.IsInProgress && CombatManager.Instance.IsPlayPhase)
+        {
+            var combatCards = UiHelper.FindAll<NCardHolder>(((SceneTree)Engine.GetMainLoop()).Root)
+                .Where(holder => holder.CardModel is not null && holder.IsVisibleInTree())
+                .Select(holder => holder.CardModel!.Id.ToString())
+                .ToList();
+            return "combat:" + string.Join("|", combatCards);
+        }
+
+        var merchantRoom = GetAbsoluteNodeOrNull<NMerchantRoom>("/root/Game/RootSceneContainer/Run/RoomContainer/MerchantRoom");
+        if (merchantRoom?.Inventory is not null && merchantRoom.Inventory.IsOpen && merchantRoom.Inventory.IsVisibleInTree())
+        {
+            var entries = merchantRoom.Inventory.GetAllSlots()
+                .Where(slot => slot.Entry is not null && slot.Entry.IsStocked)
+                .Select(slot => slot.Entry.GetType().Name + ":" + slot.Entry.Cost)
+                .ToList();
+            return "shop:" + string.Join("|", entries);
+        }
+
+        var restRoom = GetAbsoluteNodeOrNull<NRestSiteRoom>("/root/Game/RootSceneContainer/Run/RoomContainer/RestSiteRoom");
+        if (restRoom is not null)
+        {
+            var restOptions = UiHelper.FindAll<NRestSiteButton>(restRoom)
+                .Where(button => button.IsEnabled && button.Visible && button.IsVisibleInTree())
+                .Select(button => button.Option.OptionId)
+                .ToList();
+            if (restOptions.Count > 0)
+            {
+                return "rest:" + string.Join("|", restOptions);
+            }
+        }
+
+        var eventRoom = GetAbsoluteNodeOrNull<NEventRoom>("/root/Game/RootSceneContainer/Run/RoomContainer/EventRoom");
+        if (eventRoom is not null && eventRoom.Visible && eventRoom.IsVisibleInTree())
+        {
+            var eventOptions = UiHelper.FindAll<NEventOptionButton>(eventRoom)
+                .Where(button => button.IsEnabled && !button.Option.IsLocked && button.IsVisibleInTree())
+                .Select(button => button.Option.TextKey)
+                .ToList();
+            if (eventOptions.Count > 0)
+            {
+                return "event:" + string.Join("|", eventOptions);
+            }
+        }
+
         return string.Empty;
+    }
+
+    private static bool CanRecommendPlayCard(CardModel card)
+    {
+        AbstractModel? preventer;
+        UnplayableReason reason;
+        return card.CanPlay(out reason, out preventer);
+    }
+
+    private static T? GetAbsoluteNodeOrNull<T>(string path) where T : class
+    {
+        var root = ((SceneTree)Engine.GetMainLoop()).Root;
+        return root.GetNodeOrNull(path) as T;
     }
 
     private static List<NMapPoint> ResolveCandidateMapNodes(RunState runState, List<NMapPoint> allMapPoints, Dictionary<MapCoord, NMapPoint> pointLookup)
