@@ -46,6 +46,7 @@ public sealed class AgentCore
         _handlerFactories[AgentMode.QnA] = reason => new QnAModeHandler(runtime, reason);
         Registry = BuildRegistry(runtime);
         AgentChatDialog.EnsureCreated(runtime);
+        AgentModePanel.EnsureCreated(runtime);
         IsInitialized = true;
         Log.Info($"[AiBot.Agent] Initialized. DefaultMode={CurrentMode}");
     }

@@ -110,4 +110,13 @@ public sealed class AgentUiConfig
 
     [JsonPropertyName("chatHotkey")]
     public string ChatHotkey { get; set; } = "Tab";
+
+    [JsonPropertyName("showModePanel")]
+    public bool ShowModePanel { get; set; } = true;
+
+    [JsonPropertyName("modePanelHotkey")]
+    public string ModePanelHotkey { get; set; } = "F8";
+
+    [JsonPropertyName("modePanelStartVisible")]
+    public bool ModePanelStartVisible { get; set; } = true;
 }
