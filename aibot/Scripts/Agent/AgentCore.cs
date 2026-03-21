@@ -23,6 +23,8 @@ public sealed class AgentCore
 
     public AgentSkillRegistry Registry { get; private set; } = new();
 
+    public AgentConversationSessionManager ConversationSessions { get; private set; } = new(() => 50);
+
     public event Action<AgentModeChangeRequest>? ModeChangeRequested;
 
     public event Action<AgentMode>? ModeChanged;
@@ -45,6 +47,7 @@ public sealed class AgentCore
         _handlerFactories[AgentMode.Assist] = reason => new AssistModeHandler(runtime, reason);
         _handlerFactories[AgentMode.QnA] = reason => new QnAModeHandler(runtime, reason);
         Registry = BuildRegistry(runtime);
+        ConversationSessions = new AgentConversationSessionManager(() => Math.Max(1, _runtime?.Config.Agent.MaxConversationHistory ?? 50));
         AgentChatDialog.EnsureCreated(runtime);
         AgentModePanel.EnsureCreated(runtime);
         AgentRecommendOverlay.EnsureCreated(runtime);
@@ -168,6 +171,18 @@ public sealed class AgentCore
             return "Agent 尚未激活。";
         }
 
-        return await _currentHandler.OnUserInputAsync(input, cancellationToken);
+        var mode = _currentHandler.Mode;
+        if (mode is AgentMode.SemiAuto or AgentMode.QnA)
+        {
+            ConversationSessions.AddUserMessage(mode, input);
+        }
+
+        var response = await _currentHandler.OnUserInputAsync(input, cancellationToken);
+        if (mode is AgentMode.SemiAuto or AgentMode.QnA)
+        {
+            ConversationSessions.AddAgentMessage(mode, response);
+        }
+
+        return response;
     }
 }

@@ -179,8 +179,10 @@ public sealed partial class AgentChatDialog : CanvasLayer
         _instance.Visible = true;
         if (!string.IsNullOrWhiteSpace(systemMessage))
         {
-            _instance.EnqueueMessage("系统", systemMessage);
+            AgentCore.Instance.ConversationSessions.AddSystemMessage(mode, systemMessage);
         }
+
+        _instance.SyncMessagesFromSession();
     }
 
     public static void HideDialog()
@@ -244,12 +246,6 @@ public sealed partial class AgentChatDialog : CanvasLayer
 
         if (changed)
         {
-            var maxHistory = Math.Max(1, _runtime?.Config.Agent.MaxConversationHistory ?? 50);
-            while (_messages.Count > maxHistory)
-            {
-                _messages.RemoveAt(0);
-            }
-
             RefreshText();
         }
     }
@@ -268,12 +264,13 @@ public sealed partial class AgentChatDialog : CanvasLayer
 
         try
         {
-            var response = await AgentCore.Instance.SubmitUserInputAsync(text);
-            ReplaceLastSystemMessage(response);
+            await AgentCore.Instance.SubmitUserInputAsync(text);
+            SyncMessagesFromSession();
         }
         catch (Exception ex)
         {
-            ReplaceLastSystemMessage($"处理失败：{ex.Message}");
+            AgentCore.Instance.ConversationSessions.AddAgentMessage(_mode, $"处理失败：{ex.Message}");
+            SyncMessagesFromSession();
         }
     }
 
@@ -284,12 +281,13 @@ public sealed partial class AgentChatDialog : CanvasLayer
 
         try
         {
-            var response = await AgentCore.Instance.SubmitUserInputAsync(command);
-            ReplaceLastSystemMessage(response);
+            await AgentCore.Instance.SubmitUserInputAsync(command);
+            SyncMessagesFromSession();
         }
         catch (Exception ex)
         {
-            ReplaceLastSystemMessage($"处理失败：{ex.Message}");
+            AgentCore.Instance.ConversationSessions.AddAgentMessage(_mode, $"处理失败：{ex.Message}");
+            SyncMessagesFromSession();
         }
     }
 
@@ -298,16 +296,19 @@ public sealed partial class AgentChatDialog : CanvasLayer
         _pendingMessages.Enqueue((role, content));
     }
 
-    private void ReplaceLastSystemMessage(string content)
+    public void SyncMessagesFromSession()
     {
-        if (_messages.Count > 0 && _messages[^1].Role == "系统" && _messages[^1].Content == "处理中...")
+        while (_pendingMessages.TryDequeue(out _))
         {
-            _messages[^1] = ("Agent", content);
-            RefreshText();
-            return;
         }
 
-        EnqueueMessage("Agent", content);
+        _messages.Clear();
+        foreach (var message in AgentCore.Instance.ConversationSessions.GetMessages(_mode))
+        {
+            _messages.Add((MapRole(message.Role), message.Content));
+        }
+
+        RefreshText();
     }
 
     private void RefreshText()
@@ -333,6 +334,17 @@ public sealed partial class AgentChatDialog : CanvasLayer
     {
         _pendingLabel.Text = string.Empty;
         _pendingPanel.Visible = false;
+    }
+
+    private static string MapRole(AgentConversationRole role)
+    {
+        return role switch
+        {
+            AgentConversationRole.System => "系统",
+            AgentConversationRole.User => "你",
+            AgentConversationRole.Agent => "Agent",
+            _ => "消息"
+        };
     }
 
     private static bool HotkeyMatches(string? configuredHotkey, Key keycode)

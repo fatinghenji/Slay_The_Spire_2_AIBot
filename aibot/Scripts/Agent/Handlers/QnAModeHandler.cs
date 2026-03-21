@@ -99,7 +99,8 @@ public sealed class QnAModeHandler : IAgentModeHandler
             return null;
         }
 
-        var answer = await _llmBridge.AnswerQuestionAsync(question, analysis, knowledgeAnswer, cancellationToken);
+        var recentConversation = AgentCore.Instance.ConversationSessions.BuildTranscript(Mode, 8, question);
+        var answer = await _llmBridge.AnswerQuestionAsync(question, analysis, knowledgeAnswer, recentConversation, cancellationToken);
         if (answer is null || string.IsNullOrWhiteSpace(answer.Content))
         {
             return null;

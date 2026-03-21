@@ -36,6 +36,7 @@ public sealed class AgentLlmBridge : IDisposable
         string question,
         RunAnalysis analysis,
         KnowledgeAnswer knowledgeAnswer,
+        string recentConversation,
         CancellationToken cancellationToken)
     {
         if (!IsEnabled || string.IsNullOrWhiteSpace(question))
@@ -45,7 +46,7 @@ public sealed class AgentLlmBridge : IDisposable
 
         try
         {
-            var prompt = BuildQuestionPrompt(question, analysis, knowledgeAnswer);
+            var prompt = BuildQuestionPrompt(question, analysis, knowledgeAnswer, recentConversation);
             if (_config.Logging.LogDecisionPrompt)
             {
                 Log.Info($"[AiBot.Agent] QnA bridge prompt:\n{prompt}");
@@ -71,6 +72,7 @@ public sealed class AgentLlmBridge : IDisposable
         string input,
         RunAnalysis analysis,
         IReadOnlyList<string> availableSkills,
+        string recentConversation,
         CancellationToken cancellationToken)
     {
         if (!IsEnabled || string.IsNullOrWhiteSpace(input) || availableSkills.Count == 0)
@@ -80,7 +82,7 @@ public sealed class AgentLlmBridge : IDisposable
 
         try
         {
-            var prompt = BuildIntentPrompt(input, analysis, availableSkills);
+            var prompt = BuildIntentPrompt(input, analysis, availableSkills, recentConversation);
             if (_config.Logging.LogDecisionPrompt)
             {
                 Log.Info($"[AiBot.Agent] Intent bridge prompt:\n{prompt}");
@@ -192,9 +194,16 @@ public sealed class AgentLlmBridge : IDisposable
             + "Return exactly one JSON object with fields: skillName, reason, parameters. The parameters object may only contain these fields: cardName, targetName, potionName, mapRow, mapCol, optionId, itemName, bundleIndex, gridX, gridY, useBigDivination.";
     }
 
-    private static string BuildQuestionPrompt(string question, RunAnalysis analysis, KnowledgeAnswer knowledgeAnswer)
+    private static string BuildQuestionPrompt(string question, RunAnalysis analysis, KnowledgeAnswer knowledgeAnswer, string recentConversation)
     {
         var builder = new StringBuilder();
+        if (!string.IsNullOrWhiteSpace(recentConversation))
+        {
+            builder.AppendLine("Recent conversation:");
+            builder.AppendLine(recentConversation.Trim());
+            builder.AppendLine();
+        }
+
         builder.AppendLine("Question:");
         builder.AppendLine(question.Trim());
         builder.AppendLine();
@@ -240,9 +249,16 @@ public sealed class AgentLlmBridge : IDisposable
         return builder.ToString().Trim();
     }
 
-    private static string BuildIntentPrompt(string input, RunAnalysis analysis, IReadOnlyList<string> availableSkills)
+    private static string BuildIntentPrompt(string input, RunAnalysis analysis, IReadOnlyList<string> availableSkills, string recentConversation)
     {
         var builder = new StringBuilder();
+        if (!string.IsNullOrWhiteSpace(recentConversation))
+        {
+            builder.AppendLine("Recent conversation:");
+            builder.AppendLine(recentConversation.Trim());
+            builder.AppendLine();
+        }
+
         builder.AppendLine("User input:");
         builder.AppendLine(input.Trim());
         builder.AppendLine();

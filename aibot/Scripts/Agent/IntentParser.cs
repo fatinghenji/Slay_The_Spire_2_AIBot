@@ -169,7 +169,8 @@ public sealed class IntentParser
         var availableSkills = _registry.GetAvailableSkills(AgentMode.SemiAuto)
             .Select(skill => skill.Name)
             .ToList();
-        var llmIntent = await _llmBridge.RecognizeSkillIntentAsync(input, analysis, availableSkills, cancellationToken);
+        var recentConversation = AgentCore.Instance.ConversationSessions.BuildTranscript(AgentMode.SemiAuto, 8, input);
+        var llmIntent = await _llmBridge.RecognizeSkillIntentAsync(input, analysis, availableSkills, recentConversation, cancellationToken);
         if (llmIntent is null || string.IsNullOrWhiteSpace(llmIntent.SkillName))
         {
             return parsed;
