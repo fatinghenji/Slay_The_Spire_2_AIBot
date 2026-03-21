@@ -14,7 +14,7 @@
     "name": "deepseek",
     "model": "deepseek-chat",
     "baseUrl": "https://api.deepseek.com",
-    "apiKey": "sk-9a5ab75bca3f4a86b6136e1c21d25051"
+    "apiKey": "Your apikey"
   },
   "agent": {
     "defaultMode": "fullAuto",
