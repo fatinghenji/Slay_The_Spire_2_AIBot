@@ -304,6 +304,21 @@ public sealed class KnowledgeSearchEngine
             lines.Add($"使用建议：{KnowledgeTextFormatter.FormatPlainText(potion.Usage)}");
         }
 
+        if (!string.IsNullOrWhiteSpace(potion.TargetType))
+        {
+            lines.Add($"目标类型：{KnowledgeTextFormatter.FormatPlainText(potion.TargetType)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(potion.EffectFormulaZh))
+        {
+            lines.Add($"效果公式(ZH)：{KnowledgeTextFormatter.FormatPlainText(potion.EffectFormulaZh)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(potion.EffectFormulaEn))
+        {
+            lines.Add($"效果公式(EN)：{KnowledgeTextFormatter.FormatPlainText(potion.EffectFormulaEn)}");
+        }
+
         if (!string.IsNullOrWhiteSpace(potion.DescriptionZh))
         {
             lines.Add($"描述(ZH)：{KnowledgeTextFormatter.FormatPotionText(potion, potion.DescriptionZh)}");

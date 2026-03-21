@@ -1,12 +1,19 @@
 {
-  "version": 2,
+  "version": 3,
   "description": "Canonical Slay the Spire 2 knowledge base schema for core/custom layered loading.",
   "jsonFiles": {
     "characters.json": { "type": "CharacterGuideEntry[]", "key": "id" },
     "builds.json": { "type": "BuildGuideEntry[]", "key": "id" },
     "cards.json": { "type": "CardGuideEntry[]", "key": "slug" },
     "relics.json": { "type": "RelicGuideEntry[]", "key": "slug" },
-    "potions.json": { "type": "PotionEntry[]", "key": "slug" },
+    "potions.json": {
+      "type": "PotionEntry[]",
+      "key": "slug",
+      "notes": [
+        "PotionEntry supports targetType, effectFormulaEn, and effectFormulaZh.",
+        "Use targetType values that match in-game semantics such as Self, AnyPlayer, or AllEnemies."
+      ]
+    },
     "powers.json": {
       "type": "PowerEntry[]",
       "key": "slug",

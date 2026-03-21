@@ -5,6 +5,9 @@
     "nameZh": "灰水",
     "rarity": "Uncommon",
     "usage": "CombatOnly",
+    "targetType": "Self",
+    "effectFormulaEn": "Select 0 to all cards in your hand and Exhaust each selected card.",
+    "effectFormulaZh": "从手牌中选择 0 到全部卡牌，并将每张被选中的牌消耗。",
     "descriptionEn": "[gold]Exhaust[/gold] any number of cards in your [gold]Hand[/gold].",
     "descriptionZh": "[gold]消耗[/gold]你[gold]手牌[/gold]中的任意张牌。",
     "source": "core"
@@ -15,6 +18,9 @@
     "nameZh": "攻击药水",
     "rarity": "Common",
     "usage": "CombatOnly",
+    "targetType": "Self",
+    "effectFormulaEn": "Generate 3 distinct random Attack cards from the owner's unlocked pool, choose 1, add it to hand, and set it free this turn.",
+    "effectFormulaZh": "从持有者已解锁的攻击牌池中生成 3 张不同随机攻击牌，选择 1 张加入手牌，并令其本回合费用为 0。",
     "descriptionEn": "Choose [blue]1[/blue] of [blue]3[/blue] random Attack cards to add into your [gold]Hand[/gold]. It's free to play this turn.",
     "descriptionZh": "从[blue]3[/blue]张随机攻击牌中选择[blue]1[/blue]张加入你的[gold]手牌[/gold]。这张牌在本回合可以免费打出。",
     "source": "core"
@@ -35,6 +41,9 @@
     "nameZh": "熔炉的祝福",
     "rarity": "Uncommon",
     "usage": "CombatOnly",
+    "targetType": "Self",
+    "effectFormulaEn": "Upgrade every upgradable card currently in the owner's hand for the rest of combat.",
+    "effectFormulaZh": "将持有者当前手牌中所有可升级的牌在本场战斗内升级。",
     "descriptionEn": "[gold]Upgrade[/gold] all cards in your [gold]Hand[/gold] for the rest of combat.",
     "descriptionZh": "在本场战斗中[gold]升级[/gold]你[gold]手牌[/gold]中的所有牌。",
     "source": "core"
@@ -45,6 +54,9 @@
     "nameZh": "格挡药水",
     "rarity": "Common",
     "usage": "CombatOnly",
+    "targetType": "AnyPlayer",
+    "effectFormulaEn": "Target a player creature and grant 12 unpowered Block.",
+    "effectFormulaZh": "指定一名玩家单位，给予 12 点非强化格挡。",
     "descriptionEn": "Gain [blue]{Block}[/blue] [gold]Block[/gold].",
     "descriptionZh": "获得[blue]{Block}[/blue]点[gold]格挡[/gold]。",
     "source": "core"
@@ -55,6 +67,9 @@
     "nameZh": "鲜血药水",
     "rarity": "Common",
     "usage": "AnyTime",
+    "targetType": "AnyPlayer",
+    "effectFormulaEn": "Target a player creature and heal for 20% of that target's Max HP.",
+    "effectFormulaZh": "指定一名玩家单位，回复其最大生命值 20% 的生命。",
     "descriptionEn": "Heal for [green]{HealPercent}%[/green] of your Max HP.",
     "descriptionZh": "回复你最大生命值的[green]{HealPercent}%[/green]。",
     "source": "core"
@@ -145,6 +160,9 @@
     "nameZh": "敏捷药水",
     "rarity": "Common",
     "usage": "CombatOnly",
+    "targetType": "AnyPlayer",
+    "effectFormulaEn": "Target a player creature and apply 2 Dexterity.",
+    "effectFormulaZh": "指定一名玩家单位，施加 2 层敏捷。",
     "descriptionEn": "Gain [blue]{DexterityPower}[/blue] [gold]Dexterity[/gold].",
     "descriptionZh": "获得[blue]{DexterityPower}[/blue]点[gold]敏捷[/gold]。",
     "source": "core"
@@ -155,6 +173,9 @@
     "nameZh": "精炼混沌",
     "rarity": "Rare",
     "usage": "CombatOnly",
+    "targetType": "Self",
+    "effectFormulaEn": "Auto-play the top 3 cards of the owner's draw pile.",
+    "effectFormulaZh": "自动打出持有者抽牌堆顶部的 3 张牌。",
     "descriptionEn": "Play the top [blue]{Repeat}[/blue] cards of your [gold]Draw Pile[/gold].",
     "descriptionZh": "打出你[gold]抽牌堆[/gold]顶部的[blue]{Repeat}[/blue]张牌。",
     "source": "core"
@@ -175,6 +196,9 @@
     "nameZh": "复制药水",
     "rarity": "Uncommon",
     "usage": "CombatOnly",
+    "targetType": "Self",
+    "effectFormulaEn": "Apply 1 DuplicationPower to the owner so the next card played this turn is played an extra time.",
+    "effectFormulaZh": "给持有者施加 1 层复制效果，使其本回合打出的下一张牌额外打出一次。",
     "descriptionEn": "This turn, your next card is played an extra time.",
     "descriptionZh": "本回合，你打出的下一张牌会额外打出一次。",
     "source": "core"
@@ -185,6 +209,9 @@
     "nameZh": "能量药水",
     "rarity": "Common",
     "usage": "CombatOnly",
+    "targetType": "AnyPlayer",
+    "effectFormulaEn": "Target a player creature and grant that player's side 2 Energy.",
+    "effectFormulaZh": "指定一名玩家单位，并给予该玩家 2 点能量。",
     "descriptionEn": "Gain {Energy:energyIcons()}.",
     "descriptionZh": "获得{Energy:energyIcons()}。",
     "source": "core"
@@ -195,6 +222,9 @@
     "nameZh": "混沌药水",
     "rarity": "Rare",
     "usage": "AnyTime",
+    "targetType": "Self",
+    "effectFormulaEn": "While the owner has open potion slots, repeatedly generate a random out-of-combat potion and try to procure it into an empty slot.",
+    "effectFormulaZh": "只要持有者还有空药水槽，就反复生成随机的战斗外药水并尝试放入空槽。",
     "descriptionEn": "Fill all your empty potion slots with random potions.",
     "descriptionZh": "在所有空药水栏位中获得随机药水。",
     "source": "core"
@@ -215,6 +245,9 @@
     "nameZh": "爆炸安瓿",
     "rarity": "Common",
     "usage": "CombatOnly",
+    "targetType": "AllEnemies",
+    "effectFormulaEn": "Deal 10 unpowered damage to every hittable enemy.",
+    "effectFormulaZh": "对所有可命中的敌人造成 10 点非强化伤害。",
     "descriptionEn": "Deal [blue]{Damage}[/blue] damage to ALL enemies.",
     "descriptionZh": "对所有敌人造成[blue]{Damage}[/blue]点伤害。",
     "source": "core"

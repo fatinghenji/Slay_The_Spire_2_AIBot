@@ -136,6 +136,15 @@ public sealed class PotionEntry
     [JsonPropertyName("usage")]
     public string? Usage { get; set; }
 
+    [JsonPropertyName("targetType")]
+    public string? TargetType { get; set; }
+
+    [JsonPropertyName("effectFormulaEn")]
+    public string? EffectFormulaEn { get; set; }
+
+    [JsonPropertyName("effectFormulaZh")]
+    public string? EffectFormulaZh { get; set; }
+
     [JsonPropertyName("descriptionEn")]
     public string? DescriptionEn { get; set; }
 
