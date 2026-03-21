@@ -12,12 +12,14 @@ public sealed class QnAModeHandler : IAgentModeHandler
     private readonly AiBotRuntime _runtime;
     private readonly string _activationReason;
     private readonly KnowledgeSearchEngine? _searchEngine;
+    private readonly AgentLlmBridge? _llmBridge;
 
     public QnAModeHandler(AiBotRuntime runtime, string activationReason)
     {
         _runtime = runtime;
         _activationReason = activationReason;
         _searchEngine = runtime.KnowledgeBase is null ? null : new KnowledgeSearchEngine(runtime.KnowledgeBase);
+        _llmBridge = runtime.Config.CanUseCloud ? new AgentLlmBridge(runtime.Config) : null;
     }
 
     public AgentMode Mode => AgentMode.QnA;
@@ -73,6 +75,13 @@ public sealed class QnAModeHandler : IAgentModeHandler
             return response;
         }
 
+        var llmAnswer = await TryAnswerWithLlmAsync(question, analysis, knowledgeAnswer, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(llmAnswer))
+        {
+            AiBotDecisionFeed.Publish(new DecisionTrace("QnA", "LLM", "受限云端补答", llmAnswer));
+            return llmAnswer;
+        }
+
         var fallback = BuildAnalysisBackedFallback(analysis);
         AiBotDecisionFeed.Publish(new DecisionTrace("QnA", "Fallback", "局势摘要兜底", fallback));
         return fallback;
@@ -80,6 +89,23 @@ public sealed class QnAModeHandler : IAgentModeHandler
 
     public void Dispose()
     {
+        _llmBridge?.Dispose();
+    }
+
+    private async Task<string?> TryAnswerWithLlmAsync(string question, RunAnalysis analysis, KnowledgeAnswer knowledgeAnswer, CancellationToken cancellationToken)
+    {
+        if (_llmBridge is null)
+        {
+            return null;
+        }
+
+        var answer = await _llmBridge.AnswerQuestionAsync(question, analysis, knowledgeAnswer, cancellationToken);
+        if (answer is null || string.IsNullOrWhiteSpace(answer.Content))
+        {
+            return null;
+        }
+
+        return AppendContextHint(answer.Content, analysis);
     }
 
     private async Task<string?> TryHandleToolLikeQuestionAsync(string question, CancellationToken cancellationToken)
