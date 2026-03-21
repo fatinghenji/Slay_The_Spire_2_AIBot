@@ -60,8 +60,8 @@ public sealed class GuideKnowledgeBase
     public void Load()
     {
         Directory.CreateDirectory(RootDirectory);
-        OverviewMarkdown = ReadTextFromLayers("00_OVERVIEW.md");
-        KnowledgeMarkdown = ReadTextFromLayers("sts2_knowledge_base.md");
+        OverviewMarkdown = ReadTextFromAliases("overview.md", "00_OVERVIEW.md");
+        KnowledgeMarkdown = ReadTextFromAliases("general_strategy.md", "sts2_knowledge_base.md");
         Characters = LoadLayeredList<CharacterGuideEntry>("characters.json", "characters_full.json", entry => entry.Id.ToString());
         Builds = LoadLayeredList<BuildGuideEntry>("builds.json", "builds_full.json", entry => entry.Id.ToString());
         Cards = LoadLayeredList<CardGuideEntry>("cards.json", "cards_full.json", entry => Normalize(entry.Slug));
@@ -541,13 +541,13 @@ public sealed class GuideKnowledgeBase
         var guides = new Dictionary<int, string>();
         foreach (var character in Characters)
         {
-            var fileName = ResolveCharacterGuideFileName(character);
-            if (string.IsNullOrWhiteSpace(fileName))
+            var fileNames = ResolveCharacterGuideFileNames(character);
+            if (fileNames.Count == 0)
             {
                 continue;
             }
 
-            var markdown = ReadTextFromLayers(fileName);
+            var markdown = ReadTextFromAliases(fileNames.ToArray());
             if (!string.IsNullOrWhiteSpace(markdown))
             {
                 guides[character.Id] = markdown;
@@ -557,11 +557,13 @@ public sealed class GuideKnowledgeBase
         return guides;
     }
 
-    private static string ResolveCharacterGuideFileName(CharacterGuideEntry character)
+    private static IReadOnlyList<string> ResolveCharacterGuideFileNames(CharacterGuideEntry character)
     {
+        var candidates = new List<string>();
         if (!string.IsNullOrWhiteSpace(character.Slug))
         {
-            return $"{character.Slug}_complete_guide.md";
+            candidates.Add(character.Slug + ".md");
+            candidates.Add(character.Slug + "_complete_guide.md");
         }
 
         var englishName = character.NameEn?.Trim();
@@ -572,10 +574,14 @@ public sealed class GuideKnowledgeBase
                 englishName = englishName[4..];
             }
 
-            return englishName.ToLowerInvariant().Replace(' ', '_') + "_complete_guide.md";
+            var baseName = englishName.ToLowerInvariant().Replace(' ', '_');
+            candidates.Add(baseName + ".md");
+            candidates.Add(baseName + "_complete_guide.md");
         }
 
-        return string.Empty;
+        return candidates
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private static void AddFirstMatchingLine(List<string> target, string text, params string[] markers)
@@ -884,6 +890,20 @@ public sealed class GuideKnowledgeBase
 
         var workspaceFallback = Path.GetFullPath(Path.Combine(modDirectory, "..", "..", "sts2_guides"));
         return workspaceFallback;
+    }
+
+    private string ReadTextFromAliases(params string[] fileNames)
+    {
+        foreach (var fileName in fileNames.Where(name => !string.IsNullOrWhiteSpace(name)).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var markdown = ReadTextFromLayers(fileName);
+            if (!string.IsNullOrWhiteSpace(markdown))
+            {
+                return markdown;
+            }
+        }
+
+        return string.Empty;
     }
 
     private string ReadTextFromLayers(string fileName)

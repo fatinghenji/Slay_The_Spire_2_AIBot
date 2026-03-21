@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "description": "Canonical Slay the Spire 2 knowledge base schema for core/custom layered loading.",
+  "jsonFiles": {
+    "characters.json": { "type": "CharacterGuideEntry[]", "key": "id" },
+    "builds.json": { "type": "BuildGuideEntry[]", "key": "id" },
+    "cards.json": { "type": "CardGuideEntry[]", "key": "slug" },
+    "relics.json": { "type": "RelicGuideEntry[]", "key": "slug" },
+    "potions.json": { "type": "PotionEntry[]", "key": "slug" },
+    "powers.json": { "type": "PowerEntry[]", "key": "slug" },
+    "enemies.json": { "type": "EnemyEntry[]", "key": "slug" },
+    "events.json": { "type": "EventEntry[]", "key": "slug" },
+    "enchantments.json": { "type": "EnchantmentEntry[]", "key": "slug" },
+    "game_mechanics.json": { "type": "MechanicRule[]", "key": "id" }
+  },
+  "guideFiles": [
+    "guides/overview.md",
+    "guides/general_strategy.md",
+    "guides/ironclad.md",
+    "guides/silent.md",
+    "guides/defect.md",
+    "guides/regent.md",
+    "guides/necrobinder.md"
+  ]
+}
