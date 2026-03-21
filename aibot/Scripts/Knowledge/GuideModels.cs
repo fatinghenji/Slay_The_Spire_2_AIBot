@@ -109,6 +109,27 @@ public sealed class RelicGuideEntry
     [JsonPropertyName("characterId")]
     public int? CharacterId { get; set; }
 
+    [JsonPropertyName("rarity")]
+    public string? Rarity { get; set; }
+
+    [JsonPropertyName("triggerTimingEn")]
+    public string? TriggerTimingEn { get; set; }
+
+    [JsonPropertyName("triggerTimingZh")]
+    public string? TriggerTimingZh { get; set; }
+
+    [JsonPropertyName("effectSummaryEn")]
+    public string? EffectSummaryEn { get; set; }
+
+    [JsonPropertyName("effectSummaryZh")]
+    public string? EffectSummaryZh { get; set; }
+
+    [JsonPropertyName("conditionSummaryEn")]
+    public string? ConditionSummaryEn { get; set; }
+
+    [JsonPropertyName("conditionSummaryZh")]
+    public string? ConditionSummaryZh { get; set; }
+
     [JsonPropertyName("descriptionEn")]
     public string? DescriptionEn { get; set; }
 
@@ -315,6 +336,30 @@ public sealed class EnchantmentEntry
 
     [JsonPropertyName("nameZh")]
     public string? NameZh { get; set; }
+
+    [JsonPropertyName("applicableToEn")]
+    public string? ApplicableToEn { get; set; }
+
+    [JsonPropertyName("applicableToZh")]
+    public string? ApplicableToZh { get; set; }
+
+    [JsonPropertyName("triggerTimingEn")]
+    public string? TriggerTimingEn { get; set; }
+
+    [JsonPropertyName("triggerTimingZh")]
+    public string? TriggerTimingZh { get; set; }
+
+    [JsonPropertyName("effectSummaryEn")]
+    public string? EffectSummaryEn { get; set; }
+
+    [JsonPropertyName("effectSummaryZh")]
+    public string? EffectSummaryZh { get; set; }
+
+    [JsonPropertyName("conditionSummaryEn")]
+    public string? ConditionSummaryEn { get; set; }
+
+    [JsonPropertyName("conditionSummaryZh")]
+    public string? ConditionSummaryZh { get; set; }
 
     [JsonPropertyName("descriptionEn")]
     public string? DescriptionEn { get; set; }

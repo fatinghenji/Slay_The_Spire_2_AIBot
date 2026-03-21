@@ -2,7 +2,12 @@ using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Potions;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Nodes.Rooms;
+using MegaCrit.Sts2.Core.Nodes.Screens;
+using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
+using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Runs;
+using System.Text.RegularExpressions;
 using aibot.Scripts.Agent.Skills;
 using aibot.Scripts.Core;
 
@@ -128,10 +133,105 @@ public sealed class IntentParser
             return new ParsedIntent(ParsedIntentKind.Skill, "use_potion", new AgentSkillParameters(PotionName: potionName));
         }
 
-        if (ContainsAny(normalized, "选卡", "选择奖励卡", "pick card"))
+        if (ContainsAny(normalized, "选卡", "选择奖励卡", "pick card") && NOverlayStack.Instance?.Peek() is not NChooseACardSelectionScreen)
         {
             var cardName = ExtractArgument(text, "选卡", "选择奖励卡", "pick card");
             return new ParsedIntent(ParsedIntentKind.Skill, "pick_card_reward", new AgentSkillParameters(CardName: cardName));
+        }
+
+        if (ContainsAny(normalized, "选这张", "选牌", "移除", "升级这张", "变形", "附魔", "select card", "remove card", "upgrade card", "transform card", "enchant card"))
+        {
+            var cardName = ExtractArgument(text, "选这张", "选牌", "移除", "升级这张", "变形", "附魔", "select card", "remove card", "upgrade card", "transform card", "enchant card");
+            var index = ExtractOrdinalIndex(normalized);
+            return new ParsedIntent(
+                ParsedIntentKind.Skill,
+                "select_card",
+                new AgentSkillParameters(
+                    CardName: cardName,
+                    ItemName: cardName,
+                    OptionId: BuildIndexOptionId(index) ?? NormalizeChoiceKeyword(cardName)));
+        }
+
+        if (ContainsAny(normalized, "选遗物", "拿遗物", "choose relic", "pick relic"))
+        {
+            var relicName = ExtractArgument(text, "选遗物", "拿遗物", "choose relic", "pick relic");
+            var index = ExtractOrdinalIndex(normalized);
+            return new ParsedIntent(
+                ParsedIntentKind.Skill,
+                "choose_relic",
+                new AgentSkillParameters(
+                    ItemName: relicName,
+                    OptionId: BuildIndexOptionId(index) ?? NormalizeChoiceKeyword(relicName)));
+        }
+
+        if (ContainsAny(normalized, "卡包", "牌包", "bundle"))
+        {
+            var argument = ExtractArgument(text, "选卡包", "选牌包", "选bundle", "choose bundle", "bundle");
+            var index = ExtractOrdinalIndex(normalized);
+            return new ParsedIntent(
+                ParsedIntentKind.Skill,
+                "choose_bundle",
+                new AgentSkillParameters(
+                    CardName: argument,
+                    BundleIndex: index,
+                    OptionId: BuildIndexOptionId(index)));
+        }
+
+        if (ContainsAny(normalized, "商店", "购买", "buy ", "shop") && !ContainsAny(normalized, "查看", "看看", "inspect"))
+        {
+            var itemName = ExtractArgument(text, "买商店", "购买", "买", "buy", "purchase", "shop");
+            var index = ExtractOrdinalIndex(normalized);
+            return new ParsedIntent(
+                ParsedIntentKind.Skill,
+                "purchase_shop",
+                new AgentSkillParameters(
+                    ItemName: itemName,
+                    OptionId: BuildIndexOptionId(index) ?? NormalizeChoiceKeyword(itemName)));
+        }
+
+        if (ContainsAny(normalized, "营火", "休息点", "休息", "锻造", "smith", "rest"))
+        {
+            var optionId = InferRestSiteOptionId(normalized);
+            var index = ExtractOrdinalIndex(normalized);
+            return new ParsedIntent(
+                ParsedIntentKind.Skill,
+                "rest_site",
+                new AgentSkillParameters(
+                    OptionId: optionId ?? BuildIndexOptionId(index),
+                    ItemName: optionId));
+        }
+
+        if (ContainsAny(normalized, "事件选项", "选事件", "事件里选", "choose event"))
+        {
+            var optionText = ExtractArgument(text, "事件选项", "选事件", "事件里选", "choose event");
+            var index = ExtractOrdinalIndex(normalized);
+            return new ParsedIntent(
+                ParsedIntentKind.Skill,
+                "choose_event_option",
+                new AgentSkillParameters(
+                    ItemName: optionText,
+                    OptionId: NormalizeChoiceKeyword(optionText) ?? BuildIndexOptionId(index)));
+        }
+
+        if (ContainsAny(normalized, "水晶球", "占卜", "crystal sphere", "divination"))
+        {
+            var (gridX, gridY) = ExtractGridCoordinates(normalized);
+            bool? useBigDivination = normalized.Contains("大占卜", StringComparison.OrdinalIgnoreCase) || normalized.Contains("big", StringComparison.OrdinalIgnoreCase)
+                ? true
+                : normalized.Contains("小占卜", StringComparison.OrdinalIgnoreCase) || normalized.Contains("small", StringComparison.OrdinalIgnoreCase)
+                    ? false
+                    : null;
+
+            return new ParsedIntent(
+                ParsedIntentKind.Skill,
+                "crystal_sphere",
+                new AgentSkillParameters(
+                    GridX: gridX,
+                    GridY: gridY,
+                    UseBigDivination: useBigDivination,
+                    OptionId: normalized.Contains("继续", StringComparison.OrdinalIgnoreCase) || normalized.Contains("proceed", StringComparison.OrdinalIgnoreCase)
+                        ? "proceed"
+                        : null));
         }
 
         if (ContainsAny(normalized, "走左", "左边", "left"))
@@ -147,6 +247,12 @@ public sealed class IntentParser
         if (ContainsAny(normalized, "走中", "中间", "middle", "center"))
         {
             return new ParsedIntent(ParsedIntentKind.Skill, "navigate_map", new AgentSkillParameters(MapCol: 1));
+        }
+
+        var contextualIntent = TryParseContextualOrdinalIntent(normalized);
+        if (contextualIntent is not null)
+        {
+            return contextualIntent;
         }
 
         return new ParsedIntent(ParsedIntentKind.Unknown, string.Empty);
@@ -271,6 +377,122 @@ public sealed class IntentParser
         }
 
         return null;
+    }
+
+    private ParsedIntent? TryParseContextualOrdinalIntent(string normalized)
+    {
+        var index = ExtractOrdinalIndex(normalized);
+        if (index is null)
+        {
+            return null;
+        }
+
+        if (NOverlayStack.Instance?.Peek() is NChooseABundleSelectionScreen)
+        {
+            return new ParsedIntent(ParsedIntentKind.Skill, "choose_bundle", new AgentSkillParameters(BundleIndex: index, OptionId: BuildIndexOptionId(index)));
+        }
+
+        if (NOverlayStack.Instance?.Peek() is NChooseARelicSelection)
+        {
+            return new ParsedIntent(ParsedIntentKind.Skill, "choose_relic", new AgentSkillParameters(OptionId: BuildIndexOptionId(index)));
+        }
+
+        if (GetAbsoluteNodeOrNull<NEventRoom>("/root/Game/RootSceneContainer/Run/RoomContainer/EventRoom") is { Visible: true })
+        {
+            return new ParsedIntent(ParsedIntentKind.Skill, "choose_event_option", new AgentSkillParameters(OptionId: BuildIndexOptionId(index)));
+        }
+
+        if (GetAbsoluteNodeOrNull<NMerchantRoom>("/root/Game/RootSceneContainer/Run/RoomContainer/MerchantRoom") is not null && ContainsAny(normalized, "买", "购买", "shop"))
+        {
+            return new ParsedIntent(ParsedIntentKind.Skill, "purchase_shop", new AgentSkillParameters(OptionId: BuildIndexOptionId(index)));
+        }
+
+        return null;
+    }
+
+    private static int? ExtractOrdinalIndex(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        if (ContainsAny(text, "第一个", "第一项", "first")) return 0;
+        if (ContainsAny(text, "第二个", "第二项", "second")) return 1;
+        if (ContainsAny(text, "第三个", "第三项", "third")) return 2;
+
+        var match = Regex.Match(text, @"第?\s*(\d+)\s*(个|项|option|bundle|relic)?", RegexOptions.IgnoreCase);
+        if (!match.Success || !int.TryParse(match.Groups[1].Value, out var number) || number <= 0)
+        {
+            return null;
+        }
+
+        return number - 1;
+    }
+
+    private static string? BuildIndexOptionId(int? index)
+    {
+        return index is null ? null : $"index:{index.Value}";
+    }
+
+    private static string? InferRestSiteOptionId(string normalized)
+    {
+        if (ContainsAny(normalized, "休息", "heal", "回血"))
+        {
+            return "heal";
+        }
+
+        if (ContainsAny(normalized, "锻造", "升级", "smith"))
+        {
+            return "smith";
+        }
+
+        if (ContainsAny(normalized, "mend", "修补"))
+        {
+            return "mend";
+        }
+
+        return null;
+    }
+
+    private static string? NormalizeChoiceKeyword(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return null;
+        }
+
+        var normalized = raw.ToLowerInvariant();
+        if (ContainsAny(normalized, "skip", "跳过", "不要"))
+        {
+            return "skip";
+        }
+
+        if (ContainsAny(normalized, "proceed", "继续", "离开", "完成"))
+        {
+            return "proceed";
+        }
+
+        return null;
+    }
+
+    private static (int? x, int? y) ExtractGridCoordinates(string text)
+    {
+        var pairMatch = Regex.Match(text, @"(\d+)\s*[,，xX ]\s*(\d+)");
+        if (pairMatch.Success
+            && int.TryParse(pairMatch.Groups[1].Value, out var x)
+            && int.TryParse(pairMatch.Groups[2].Value, out var y))
+        {
+            return (x, y);
+        }
+
+        return (null, null);
+    }
+
+    private static T? GetAbsoluteNodeOrNull<T>(string path) where T : class
+    {
+        var root = ((Godot.SceneTree)Godot.Engine.GetMainLoop()).Root;
+        return root.GetNodeOrNull(path) as T;
     }
 
     private int ScoreCardMatch(CardModel card, string normalizedRaw, aibot.Scripts.Knowledge.CardGuideEntry? matchedGuide)

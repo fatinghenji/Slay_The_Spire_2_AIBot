@@ -106,5 +106,35 @@
 		"title": "Combat cleanup removes temporary powers and remaining block",
 		"summary": "When combat ends, `Player.AfterCombatEnd()` removes all powers except explicitly preserved ones, runs player combat-state cleanup, and strips all remaining block via `Creature.LoseBlockInternal(Creature.Block)`. Treat leftover combat-only defenses and statuses as ephemeral unless a system explicitly carries them out of combat.",
 		"source": "core"
+	},
+	{
+		"id": "ascension-cumulative-ladder",
+		"title": "Ascension levels are cumulative thresholds up to 10",
+		"summary": "`AscensionManager.maxAscensionAllowed` is 10, and `AscensionManager.HasLevel()` returns true whenever the current ascension is greater than or equal to the queried enum value. Treat higher ascensions as inheriting every lower ascension modifier rather than replacing them.",
+		"source": "core"
+	},
+	{
+		"id": "tight-belt-potion-limit",
+		"title": "Tight Belt reduces maximum potion slots by 1",
+		"summary": "When `AscensionManager.ApplyEffectsTo()` sees `AscensionLevel.TightBelt`, it calls `Player.SubtractFromMaxPotionCount(1)`. This is a persistent run-start penalty to potion capacity, not a temporary combat debuff.",
+		"source": "core"
+	},
+	{
+		"id": "ascenders-bane-starting-curse",
+		"title": "Ascender's Bane is injected into the deck at higher ascension",
+		"summary": "At `AscensionLevel.AscendersBane` or above, `AscensionManager.ApplyEffectsTo()` creates `AscendersBane`, marks it as added on floor 1, and inserts it into the deck. `AscendersBane` itself is an Eternal, Unplayable, Ethereal Curse, so the penalty is both a deck tax and a recurring draw burden until removed or transformed.",
+		"source": "core"
+	},
+	{
+		"id": "poverty-gold-multiplier",
+		"title": "Poverty ascension uses a 0.75 gold multiplier",
+		"summary": "`AscensionHelper.PovertyAscensionGoldMultiplier` is 0.75, which establishes the intended reduced-gold baseline for Poverty-related reward logic. Treat Poverty as a run-economy pressure modifier rather than a one-off event penalty.",
+		"source": "core"
+	},
+	{
+		"id": "ancient-event-heal-and-gating",
+		"title": "Ancient events heal missing HP first, but Weary Traveler reduces that recovery",
+		"summary": "In `AncientEventModel.BeforeEventStarted()`, the owner is healed for missing HP before the ancient event proceeds. If the run has `AscensionLevel.WearyTraveler`, that missing-HP heal is scaled down to 80%. Also, if `Hook.ShouldAllowAncient()` rejects the ancient, the event falls back to a blocked description plus a simple Proceed option instead of exposing its normal choice set.",
+		"source": "core"
 	}
 ]

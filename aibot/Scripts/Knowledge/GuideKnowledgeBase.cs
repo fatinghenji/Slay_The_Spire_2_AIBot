@@ -267,7 +267,7 @@ public sealed class GuideKnowledgeBase
                 var guide = FindRelic(name, characterId);
                 return guide is null
                     ? $"- {name}"
-                    : $"- {name}: {TrimSnippet(KnowledgeTextFormatter.FormatRelicText(guide, SelectBestSummaryText(guide.DescriptionZh, guide.DescriptionEn)), 120)}";
+                    : $"- {name}: {TrimSnippet(KnowledgeTextFormatter.FormatRelicText(guide, SelectBestSummaryText(guide.EffectSummaryZh, guide.EffectSummaryEn, guide.ConditionSummaryZh, guide.ConditionSummaryEn, guide.DescriptionZh, guide.DescriptionEn)), 120)}";
             })
             .ToList();
 

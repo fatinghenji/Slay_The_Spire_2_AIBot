@@ -32,6 +32,34 @@ public sealed class LookupRelicTool : RuntimeBackedToolBase
         var builder = new StringBuilder();
         builder.AppendLine($"遗物：{relic.NameEn} / {relic.NameZh}");
         builder.AppendLine($"Slug：{relic.Slug}");
+        if (!string.IsNullOrWhiteSpace(relic.Rarity))
+        {
+            builder.AppendLine($"稀有度：{KnowledgeTextFormatter.FormatPlainText(relic.Rarity)}");
+        }
+        if (!string.IsNullOrWhiteSpace(relic.TriggerTimingZh))
+        {
+            builder.AppendLine($"触发时机(ZH)：{KnowledgeTextFormatter.FormatPlainText(relic.TriggerTimingZh)}");
+        }
+        if (!string.IsNullOrWhiteSpace(relic.TriggerTimingEn))
+        {
+            builder.AppendLine($"触发时机(EN)：{KnowledgeTextFormatter.FormatPlainText(relic.TriggerTimingEn)}");
+        }
+        if (!string.IsNullOrWhiteSpace(relic.EffectSummaryZh))
+        {
+            builder.AppendLine($"效果摘要(ZH)：{KnowledgeTextFormatter.FormatPlainText(relic.EffectSummaryZh)}");
+        }
+        if (!string.IsNullOrWhiteSpace(relic.EffectSummaryEn))
+        {
+            builder.AppendLine($"效果摘要(EN)：{KnowledgeTextFormatter.FormatPlainText(relic.EffectSummaryEn)}");
+        }
+        if (!string.IsNullOrWhiteSpace(relic.ConditionSummaryZh))
+        {
+            builder.AppendLine($"条件/代价(ZH)：{KnowledgeTextFormatter.FormatPlainText(relic.ConditionSummaryZh)}");
+        }
+        if (!string.IsNullOrWhiteSpace(relic.ConditionSummaryEn))
+        {
+            builder.AppendLine($"条件/代价(EN)：{KnowledgeTextFormatter.FormatPlainText(relic.ConditionSummaryEn)}");
+        }
         if (!string.IsNullOrWhiteSpace(relic.DescriptionZh))
         {
             builder.AppendLine($"描述(ZH)：{KnowledgeTextFormatter.FormatRelicText(relic, relic.DescriptionZh)}");

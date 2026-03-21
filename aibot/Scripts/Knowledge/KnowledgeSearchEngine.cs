@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using aibot.Scripts.Decision;
 
 namespace aibot.Scripts.Knowledge;
@@ -273,6 +273,41 @@ public sealed class KnowledgeSearchEngine
             $"来源：{relic.Source}"
         };
 
+        if (!string.IsNullOrWhiteSpace(relic.Rarity))
+        {
+            lines.Add($"稀有度：{KnowledgeTextFormatter.FormatPlainText(relic.Rarity)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(relic.TriggerTimingZh))
+        {
+            lines.Add($"触发时机(ZH)：{KnowledgeTextFormatter.FormatPlainText(relic.TriggerTimingZh)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(relic.TriggerTimingEn))
+        {
+            lines.Add($"触发时机(EN)：{KnowledgeTextFormatter.FormatPlainText(relic.TriggerTimingEn)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(relic.EffectSummaryZh))
+        {
+            lines.Add($"效果摘要(ZH)：{KnowledgeTextFormatter.FormatPlainText(relic.EffectSummaryZh)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(relic.EffectSummaryEn))
+        {
+            lines.Add($"效果摘要(EN)：{KnowledgeTextFormatter.FormatPlainText(relic.EffectSummaryEn)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(relic.ConditionSummaryZh))
+        {
+            lines.Add($"条件/代价(ZH)：{KnowledgeTextFormatter.FormatPlainText(relic.ConditionSummaryZh)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(relic.ConditionSummaryEn))
+        {
+            lines.Add($"条件/代价(EN)：{KnowledgeTextFormatter.FormatPlainText(relic.ConditionSummaryEn)}");
+        }
+
         if (!string.IsNullOrWhiteSpace(relic.DescriptionEn))
         {
             lines.Add($"描述(EN)：{KnowledgeTextFormatter.FormatRelicText(relic, relic.DescriptionEn)}");
@@ -541,6 +576,46 @@ public sealed class KnowledgeSearchEngine
             $"附魔：{enchantment.NameEn} / {enchantment.NameZh}",
             $"来源：{enchantment.Source}"
         };
+
+        if (!string.IsNullOrWhiteSpace(enchantment.ApplicableToZh))
+        {
+            lines.Add($"适用对象(ZH)：{KnowledgeTextFormatter.FormatPlainText(enchantment.ApplicableToZh)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(enchantment.ApplicableToEn))
+        {
+            lines.Add($"Applicable To(EN)：{KnowledgeTextFormatter.FormatPlainText(enchantment.ApplicableToEn)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(enchantment.TriggerTimingZh))
+        {
+            lines.Add($"触发时机(ZH)：{KnowledgeTextFormatter.FormatPlainText(enchantment.TriggerTimingZh)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(enchantment.TriggerTimingEn))
+        {
+            lines.Add($"Trigger Timing(EN)：{KnowledgeTextFormatter.FormatPlainText(enchantment.TriggerTimingEn)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(enchantment.EffectSummaryZh))
+        {
+            lines.Add($"效果摘要(ZH)：{KnowledgeTextFormatter.FormatPlainText(enchantment.EffectSummaryZh)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(enchantment.EffectSummaryEn))
+        {
+            lines.Add($"Effect Summary(EN)：{KnowledgeTextFormatter.FormatPlainText(enchantment.EffectSummaryEn)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(enchantment.ConditionSummaryZh))
+        {
+            lines.Add($"条件/限制(ZH)：{KnowledgeTextFormatter.FormatPlainText(enchantment.ConditionSummaryZh)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(enchantment.ConditionSummaryEn))
+        {
+            lines.Add($"Condition / Limits(EN)：{KnowledgeTextFormatter.FormatPlainText(enchantment.ConditionSummaryEn)}");
+        }
 
         if (!string.IsNullOrWhiteSpace(enchantment.DescriptionZh))
         {

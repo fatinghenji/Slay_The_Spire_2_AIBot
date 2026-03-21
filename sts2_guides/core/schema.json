@@ -1,11 +1,18 @@
 {
-  "version": 5,
+  "version": 7,
   "description": "Canonical Slay the Spire 2 knowledge base schema for core/custom layered loading.",
   "jsonFiles": {
     "characters.json": { "type": "CharacterGuideEntry[]", "key": "id" },
     "builds.json": { "type": "BuildGuideEntry[]", "key": "id" },
     "cards.json": { "type": "CardGuideEntry[]", "key": "slug" },
-    "relics.json": { "type": "RelicGuideEntry[]", "key": "slug" },
+    "relics.json": {
+      "type": "RelicGuideEntry[]",
+      "key": "slug",
+      "notes": [
+        "RelicGuideEntry supports rarity plus triggerTimingEn/Zh, effectSummaryEn/Zh, and conditionSummaryEn/Zh.",
+        "Use triggerTiming to describe the main activation window and conditionSummary to capture notable requirements, symmetry, or drawbacks."
+      ]
+    },
     "potions.json": {
       "type": "PotionEntry[]",
       "key": "slug",
@@ -38,7 +45,14 @@
         "Each option may include localized titles and concise localized result summaries for retrieval and decision support."
       ]
     },
-    "enchantments.json": { "type": "EnchantmentEntry[]", "key": "slug" },
+    "enchantments.json": {
+      "type": "EnchantmentEntry[]",
+      "key": "slug",
+      "notes": [
+        "EnchantmentEntry supports applicableToEn/Zh, triggerTimingEn/Zh, effectSummaryEn/Zh, and conditionSummaryEn/Zh.",
+        "Use applicableTo for card-type or tag restrictions and conditionSummary for one-time, permanent-growth, or out-of-combat limitations."
+      ]
+    },
     "game_mechanics.json": { "type": "MechanicRule[]", "key": "id" }
   },
   "guideFiles": [
