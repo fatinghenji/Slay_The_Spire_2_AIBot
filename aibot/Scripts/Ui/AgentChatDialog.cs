@@ -19,6 +19,10 @@ public sealed partial class AgentChatDialog : CanvasLayer
     private readonly RichTextLabel _history;
     private readonly LineEdit _input;
     private readonly Button _sendButton;
+    private readonly PanelContainer _pendingPanel;
+    private readonly Label _pendingLabel;
+    private readonly Button _confirmButton;
+    private readonly Button _cancelButton;
 
     private AiBotRuntime? _runtime;
     private AgentMode _mode;
@@ -88,6 +92,46 @@ public sealed partial class AgentChatDialog : CanvasLayer
         _sendButton.Pressed += async () => await SubmitAsync();
         _input.TextSubmitted += async _ => await SubmitAsync();
 
+        _pendingPanel = new PanelContainer
+        {
+            Visible = false
+        };
+        layout.AddChild(_pendingPanel);
+
+        var pendingMargin = new MarginContainer();
+        pendingMargin.AddThemeConstantOverride("margin_left", 8);
+        pendingMargin.AddThemeConstantOverride("margin_right", 8);
+        pendingMargin.AddThemeConstantOverride("margin_top", 8);
+        pendingMargin.AddThemeConstantOverride("margin_bottom", 8);
+        _pendingPanel.AddChild(pendingMargin);
+
+        var pendingLayout = new VBoxContainer();
+        pendingMargin.AddChild(pendingLayout);
+
+        _pendingLabel = new Label
+        {
+            Text = string.Empty,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart
+        };
+        pendingLayout.AddChild(_pendingLabel);
+
+        var pendingButtons = new HBoxContainer();
+        pendingLayout.AddChild(pendingButtons);
+
+        _confirmButton = new Button
+        {
+            Text = "确认执行"
+        };
+        _confirmButton.Pressed += async () => await SubmitSpecialCommandAsync("确认执行");
+        pendingButtons.AddChild(_confirmButton);
+
+        _cancelButton = new Button
+        {
+            Text = "取消"
+        };
+        _cancelButton.Pressed += async () => await SubmitSpecialCommandAsync("取消执行");
+        pendingButtons.AddChild(_cancelButton);
+
         Visible = false;
     }
 
@@ -128,6 +172,10 @@ public sealed partial class AgentChatDialog : CanvasLayer
             AgentMode.QnA => "Agent Chat - QnA",
             _ => "Agent Chat"
         };
+        if (mode != AgentMode.SemiAuto)
+        {
+            _instance.ClearPendingActionInternal();
+        }
         _instance.Visible = true;
         if (!string.IsNullOrWhiteSpace(systemMessage))
         {
@@ -143,6 +191,22 @@ public sealed partial class AgentChatDialog : CanvasLayer
         }
 
         _instance.Visible = false;
+    }
+
+    public static void ShowPendingAction(string text)
+    {
+        if (_instance is null)
+        {
+            return;
+        }
+
+        _instance._pendingLabel.Text = text;
+        _instance._pendingPanel.Visible = _instance._mode == AgentMode.SemiAuto;
+    }
+
+    public static void ClearPendingAction()
+    {
+        _instance?.ClearPendingActionInternal();
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -213,6 +277,22 @@ public sealed partial class AgentChatDialog : CanvasLayer
         }
     }
 
+    private async Task SubmitSpecialCommandAsync(string command)
+    {
+        EnqueueMessage("你", command);
+        EnqueueMessage("系统", "处理中...");
+
+        try
+        {
+            var response = await AgentCore.Instance.SubmitUserInputAsync(command);
+            ReplaceLastSystemMessage(response);
+        }
+        catch (Exception ex)
+        {
+            ReplaceLastSystemMessage($"处理失败：{ex.Message}");
+        }
+    }
+
     private void EnqueueMessage(string role, string content)
     {
         _pendingMessages.Enqueue((role, content));
@@ -247,6 +327,12 @@ public sealed partial class AgentChatDialog : CanvasLayer
 
         _history.Text = builder.ToString().TrimEnd();
         _history.ScrollToLine(Math.Max(0, _history.GetLineCount() - 1));
+    }
+
+    private void ClearPendingActionInternal()
+    {
+        _pendingLabel.Text = string.Empty;
+        _pendingPanel.Visible = false;
     }
 
     private static bool HotkeyMatches(string? configuredHotkey, Key keycode)
