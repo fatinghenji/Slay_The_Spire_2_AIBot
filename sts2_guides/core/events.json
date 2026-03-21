@@ -462,5 +462,85 @@
     "descriptionEn": "You walk through a spider web and [jitter][red]PANIC[/red][/jitter]!\nBut then, a [sine][blue]wave of calm[/blue][/sine] washes over you...\n\n[sine]“Calm down. I need you to quit fussing up my web.”[/sine]\n\nHow did you calm down so quickly?\nAn [orange]itsy bitsy[/orange] spider abseils down to meet you. It seems willing to impart some techniques for [gold]gold[/gold].",
     "descriptionZh": "你在行走时撞到了一张蜘蛛网，立即[jitter][red]慌了神[/red][/jitter]！\n可是很快，一阵[sine][blue]平静的感觉[/blue][/sine]席卷了你……\n\n[sine]“冷静下来，我需要你不再弄坏我的网。”[/sine]\n\n你怎么会这么快就冷静下来的呢？\n一只[orange]小之又小[/orange]的蜘蛛沿着丝线降落下来与你问好，它看起来愿意收取一些[gold]金币[/gold]来分享它的部分技术。",
     "source": "core"
+  },
+  {
+    "slug": "darv",
+    "nameEn": "Darv",
+    "nameZh": "Darv",
+    "descriptionEn": "Ancient timeline event. Darv offers a curated set of high-impact relic choices, including several boss-tier tradeoff relics and rare tome-style outcomes.",
+    "descriptionZh": "远古时间线事件。Darv 会提供一组高影响力遗物选项，其中包含数个首领级取舍遗物与稀有书册类奖励。",
+    "source": "core"
+  },
+  {
+    "slug": "deprecated-ancient-event",
+    "nameEn": "Deprecated Ancient Event",
+    "nameZh": "已删除远古事件",
+    "descriptionEn": "This ancient event has been removed from the game.",
+    "descriptionZh": "这个远古事件已经从游戏中移除。",
+    "source": "core"
+  },
+  {
+    "slug": "neow",
+    "nameEn": "Neow",
+    "nameZh": "Neow",
+    "descriptionEn": "Ancient start-of-run event. Neow grants opening bonuses, relic tradeoffs, and modifier-driven choices that shape the entire run from floor 1.",
+    "descriptionZh": "远古开局事件。Neow 会提供开局增益、遗物取舍与基于修饰器的选项，从第一层开始影响整局路线。",
+    "source": "core"
+  },
+  {
+    "slug": "nonupeipe",
+    "nameEn": "Nonupeipe",
+    "nameZh": "Nonupeipe",
+    "descriptionEn": "Ancient timeline event focused on elegant utility relics. The pool includes options like Beautiful Bracelet and other premium accessory-style rewards.",
+    "descriptionZh": "远古时间线事件，偏向提供精致的功能型遗物。候选池包含 Beautiful Bracelet 等高质量饰品类奖励。",
+    "source": "core"
+  },
+  {
+    "slug": "orobas",
+    "nameEn": "Orobas",
+    "nameZh": "Orobas",
+    "descriptionEn": "Ancient timeline event that offers several relic bundles, including utility, survivability, and prismatic-style reward options.",
+    "descriptionZh": "远古时间线事件，会从多组遗物池中提供选择，涵盖功能、生存与偏棱彩风格的奖励路线。",
+    "source": "core"
+  },
+  {
+    "slug": "pael",
+    "nameEn": "Pael",
+    "nameZh": "Pael",
+    "descriptionEn": "Ancient timeline event centered on Pael-themed organic relics. Choices span sacrifice, growth, pet, and body-part style rewards.",
+    "descriptionZh": "远古时间线事件，围绕 Pael 系列有机遗物展开。选项覆盖献祭、成长、宠物与肢体部位风格的奖励。",
+    "source": "core"
+  },
+  {
+    "slug": "tanx",
+    "nameEn": "Tanx",
+    "nameZh": "Tanx",
+    "descriptionEn": "Ancient timeline event built around weapon relics. Tanx offers an aggressive relic pool with melee tools, thrown weapons, and a high-end apex choice.",
+    "descriptionZh": "远古时间线事件，以武器类遗物为核心。Tanx 会提供偏进攻的遗物池，包含近战武器、投掷武器与一个更高阶的终极选项。",
+    "source": "core"
+  },
+  {
+    "slug": "tezcatara",
+    "nameEn": "Tezcatara",
+    "nameZh": "Tezcatara",
+    "descriptionEn": "Ancient timeline event with comfort and feast-flavored relic pools. Rewards lean toward food, warmth, toys, and other cozy value engines.",
+    "descriptionZh": "远古时间线事件，奖励池带有盛宴与温暖主题。整体更偏向食物、温度、玩具与其他舒适型价值遗物。",
+    "source": "core"
+  },
+  {
+    "slug": "the-architect",
+    "nameEn": "The Architect",
+    "nameZh": "建筑师",
+    "descriptionEn": "Special combat-format narrative event. The Architect runs a dialogue-driven encounter that scores the run state and progresses through bespoke ancient conversations.",
+    "descriptionZh": "特殊的战斗布局叙事事件。建筑师会触发对话驱动的遭遇，基于当前局面进行评分，并推进定制的远古剧情对话。",
+    "source": "core"
+  },
+  {
+    "slug": "vakuu",
+    "nameEn": "Vakuu",
+    "nameZh": "Vakuu",
+    "descriptionEn": "Ancient timeline event that draws one relic from each of three themed pools. Several Vakuu rewards also interact with card-selection mechanics.",
+    "descriptionZh": "远古时间线事件，会从三个主题遗物池中各抽取一个选项。Vakuu 的若干奖励还会与卡牌选择机制联动。",
+    "source": "core"
   }
 ]
