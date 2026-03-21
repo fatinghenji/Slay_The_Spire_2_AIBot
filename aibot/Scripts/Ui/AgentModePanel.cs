@@ -317,7 +317,7 @@ public sealed partial class AgentModePanel : CanvasLayer
             ? string.Empty
             : $"；{_runtime.Config.Ui.ModePanelHotkey} 显示/隐藏面板";
 
-        return $"热键：{hotkeys.FullAuto} Full Auto，{hotkeys.SemiAuto} Semi Auto，{hotkeys.Assist} Assist，{hotkeys.QnA} QnA{toggleSuffix}";
+        return $"热键：{hotkeys.FullAuto} Full Auto，{hotkeys.SemiAuto} Semi Auto，{hotkeys.Assist} Assist，{hotkeys.QnA} 问答{toggleSuffix}";
     }
 
     private static bool IsHotkeyPressed(string? configuredHotkey)
@@ -351,7 +351,7 @@ public sealed partial class AgentModePanel : CanvasLayer
             AgentMode.FullAuto => "Full Auto",
             AgentMode.SemiAuto => "Semi Auto",
             AgentMode.Assist => "Assist",
-            AgentMode.QnA => "QnA",
+            AgentMode.QnA => "问答",
             _ => mode.ToString()
         };
     }

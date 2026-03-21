@@ -429,7 +429,7 @@ public sealed partial class AiBotDecisionPanel : CanvasLayer
             AgentMode.FullAuto => AiBotText.Pick(_runtime.Config, "全自动", "Full Auto"),
             AgentMode.SemiAuto => AiBotText.Pick(_runtime.Config, "半自动", "Semi Auto"),
             AgentMode.Assist => AiBotText.Pick(_runtime.Config, "辅助", "Assist"),
-            AgentMode.QnA => "QnA",
+            AgentMode.QnA => AiBotText.Pick(_runtime.Config, "问答", "QnA"),
             _ => mode.ToString()
         };
     }
