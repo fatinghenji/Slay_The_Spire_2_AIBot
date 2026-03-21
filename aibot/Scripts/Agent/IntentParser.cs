@@ -17,14 +17,17 @@ public enum ParsedIntentKind
 {
     Unknown,
     Skill,
-    Tool
+    Tool,
+    Sequence
 }
 
 public sealed record ParsedIntent(
     ParsedIntentKind Kind,
     string Name,
     AgentSkillParameters? Parameters = null,
-    string? RawArgument = null);
+    string? RawArgument = null,
+    IReadOnlyList<ParsedIntent>? Steps = null,
+    string? Reason = null);
 
 public sealed class IntentParser
 {
@@ -78,7 +81,7 @@ public sealed class IntentParser
 
         if (ContainsAny(normalized, "敌人", "怪物", "enemy"))
         {
-            return new ParsedIntent(ParsedIntentKind.Tool, "inspect_enemies", RawArgument: text);
+            return new ParsedIntent(ParsedIntentKind.Tool, "inspect_enemy", RawArgument: text);
         }
 
         if (ContainsAny(normalized, "地图", "路线", "map"))
@@ -260,36 +263,25 @@ public sealed class IntentParser
 
     public async Task<ParsedIntent> ParseWithFallbackAsync(string input, CancellationToken cancellationToken)
     {
-        var parsed = Parse(input);
-        if (parsed.Kind != ParsedIntentKind.Unknown)
+        if (_llmBridge is not null)
         {
-            return parsed;
+            var analysis = _runtime.GetCurrentAnalysis();
+            var availableSkills = _registry.GetAvailableSkills(AgentMode.SemiAuto)
+                .Select(skill => $"{skill.Name}: {skill.Description}")
+                .ToList();
+            var availableTools = _registry.GetAvailableTools(AgentMode.SemiAuto)
+                .Select(tool => $"{tool.Name}: {tool.Description}")
+                .ToList();
+            var recentConversation = AgentCore.Instance.ConversationSessions.BuildTranscript(AgentMode.SemiAuto, 8, input);
+            var actionPlan = await _llmBridge.RecognizeActionPlanAsync(input, analysis, availableSkills, availableTools, recentConversation, cancellationToken);
+            var llmParsed = ConvertActionPlan(actionPlan, input);
+            if (llmParsed.Kind != ParsedIntentKind.Unknown)
+            {
+                return llmParsed;
+            }
         }
 
-        if (_llmBridge is null)
-        {
-            return parsed;
-        }
-
-        var analysis = _runtime.GetCurrentAnalysis();
-        var availableSkills = _registry.GetAvailableSkills(AgentMode.SemiAuto)
-            .Select(skill => skill.Name)
-            .ToList();
-        var recentConversation = AgentCore.Instance.ConversationSessions.BuildTranscript(AgentMode.SemiAuto, 8, input);
-        var llmIntent = await _llmBridge.RecognizeSkillIntentAsync(input, analysis, availableSkills, recentConversation, cancellationToken);
-        if (llmIntent is null || string.IsNullOrWhiteSpace(llmIntent.SkillName))
-        {
-            return parsed;
-        }
-
-        var skill = _registry.FindSkillByName(llmIntent.SkillName);
-        if (skill is null)
-        {
-            return parsed;
-        }
-
-        var normalizedParameters = NormalizeSkillParameters(skill.Name, llmIntent.Parameters);
-        return new ParsedIntent(ParsedIntentKind.Skill, skill.Name, normalizedParameters, input);
+        return Parse(input);
     }
 
     public void Dispose()
@@ -575,5 +567,62 @@ public sealed class IntentParser
             "use_potion" => parameters with { PotionName = ResolvePotionName(parameters.PotionName) ?? parameters.PotionName },
             _ => parameters
         };
+    }
+
+    private ParsedIntent ConvertActionPlan(AgentActionPlanResult? actionPlan, string rawInput)
+    {
+        if (actionPlan is null)
+        {
+            return new ParsedIntent(ParsedIntentKind.Unknown, string.Empty);
+        }
+
+        if (string.Equals(actionPlan.Kind, "tool", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(actionPlan.ToolName)
+            && _registry.FindToolByName(actionPlan.ToolName) is not null)
+        {
+            return new ParsedIntent(
+                ParsedIntentKind.Tool,
+                actionPlan.ToolName,
+                RawArgument: string.IsNullOrWhiteSpace(actionPlan.ToolArgument) ? rawInput : actionPlan.ToolArgument,
+                Reason: actionPlan.Reason);
+        }
+
+        if (string.Equals(actionPlan.Kind, "skill", StringComparison.OrdinalIgnoreCase)
+            && actionPlan.Skill is not null
+            && _registry.FindSkillByName(actionPlan.Skill.SkillName) is not null)
+        {
+            var normalizedParameters = NormalizeSkillParameters(actionPlan.Skill.SkillName, actionPlan.Skill.Parameters);
+            return new ParsedIntent(
+                ParsedIntentKind.Skill,
+                actionPlan.Skill.SkillName,
+                normalizedParameters,
+                rawInput,
+                Reason: actionPlan.Reason);
+        }
+
+        if (string.Equals(actionPlan.Kind, "sequence", StringComparison.OrdinalIgnoreCase) && actionPlan.Actions.Count > 0)
+        {
+            var steps = actionPlan.Actions
+                .Where(step => !string.IsNullOrWhiteSpace(step.SkillName) && _registry.FindSkillByName(step.SkillName) is not null)
+                .Select(step => new ParsedIntent(
+                    ParsedIntentKind.Skill,
+                    step.SkillName,
+                    NormalizeSkillParameters(step.SkillName, step.Parameters),
+                    rawInput,
+                    Reason: step.Reason))
+                .ToList();
+
+            if (steps.Count > 0)
+            {
+                return new ParsedIntent(
+                    ParsedIntentKind.Sequence,
+                    "sequence",
+                    RawArgument: rawInput,
+                    Steps: steps,
+                    Reason: actionPlan.Reason);
+            }
+        }
+
+        return new ParsedIntent(ParsedIntentKind.Unknown, string.Empty);
     }
 }

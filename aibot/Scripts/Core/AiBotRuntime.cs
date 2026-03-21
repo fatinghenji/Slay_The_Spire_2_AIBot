@@ -39,6 +39,7 @@ using aibot.Scripts.Agent;
 using aibot.Scripts.Config;
 using aibot.Scripts.Decision;
 using aibot.Scripts.Knowledge;
+using aibot.Scripts.Localization;
 using aibot.Scripts.Ui;
 
 namespace aibot.Scripts.Core;
@@ -72,6 +73,8 @@ public sealed class AiBotRuntime : IDisposable
 
     public bool IsActive => _loopCts is { IsCancellationRequested: false };
 
+    public event Action<AiBotLanguage>? UiLanguageChanged;
+
     private AiBotRuntime()
     {
     }
@@ -95,6 +98,8 @@ public sealed class AiBotRuntime : IDisposable
 
         IsInitialized = true;
         AgentCore.Instance.Initialize(this);
+        EnsureDecisionPanel();
+        UpdateDecisionPanelVisibility();
         Log.Info($"[AiBot] Runtime initialized. CloudEnabled={Config.CanUseCloud}");
     }
 
@@ -1289,7 +1294,7 @@ public sealed class AiBotRuntime : IDisposable
     {
         if (_decisionPanel is not null && GodotObject.IsInstanceValid(_decisionPanel))
         {
-            _decisionPanel.Visible = Config.ShowDecisionPanel && IsActive;
+            _decisionPanel.Visible = Config.ShowDecisionPanel && IsInitialized;
         }
     }
 
@@ -1299,6 +1304,35 @@ public sealed class AiBotRuntime : IDisposable
         if (DecisionEngine is IDisposable disposable)
         {
             disposable.Dispose();
+        }
+    }
+
+    public void SetUiLanguage(AiBotLanguage language)
+    {
+        if (Config.Ui.GetLanguage() == language)
+        {
+            return;
+        }
+
+        Config.Ui.SetLanguage(language);
+        PersistConfig();
+        UiLanguageChanged?.Invoke(language);
+    }
+
+    private void PersistConfig()
+    {
+        if (string.IsNullOrWhiteSpace(_modDirectory))
+        {
+            return;
+        }
+
+        try
+        {
+            AiBotConfigLoader.Save(Path.Combine(_modDirectory, "config.json"), Config);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"[AiBot] Failed to persist config: {ex.Message}");
         }
     }
 }

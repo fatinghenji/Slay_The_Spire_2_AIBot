@@ -27,6 +27,7 @@
     "maxCustomFileSize": 262144
   },
   "ui": {
+    "language": "zh-CN",
     "showChatDialog": true,
     "chatHotkey": "Tab",
     "modeHotkeys": {

@@ -9,10 +9,6 @@ public static class KnowledgeSchema
     public static IReadOnlyDictionary<string, JsonKnowledgeFileRule> JsonFiles { get; } =
         new Dictionary<string, JsonKnowledgeFileRule>(StringComparer.OrdinalIgnoreCase)
         {
-            ["characters_full.json"] = new("characters_full.json", typeof(List<CharacterGuideEntry>), true),
-            ["builds_full.json"] = new("builds_full.json", typeof(List<BuildGuideEntry>), true),
-            ["cards_full.json"] = new("cards_full.json", typeof(List<CardGuideEntry>), true),
-            ["relics_full.json"] = new("relics_full.json", typeof(List<RelicGuideEntry>), true),
             ["characters.json"] = new("characters.json", typeof(List<CharacterGuideEntry>), true),
             ["builds.json"] = new("builds.json", typeof(List<BuildGuideEntry>), true),
             ["cards.json"] = new("cards.json", typeof(List<CardGuideEntry>), true),
@@ -29,9 +25,8 @@ public static class KnowledgeSchema
     public static IReadOnlySet<string> ReservedMarkdownFiles { get; } =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "00_OVERVIEW.md",
-            "sts2_knowledge_base.md",
-            "README.md"
+            "README.md",
+            "README_en.md"
         };
 
     public static bool IsGuideMarkdown(string fileName)

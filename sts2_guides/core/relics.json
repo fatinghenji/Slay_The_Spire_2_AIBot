@@ -565,6 +565,22 @@
     "source": "core"
   },
   {
+    "slug": "dead-branch",
+    "nameEn": "Dead Branch",
+    "nameZh": "枯枝",
+    "characterId": null,
+    "rarity": "Rare",
+    "triggerTimingEn": "Whenever you Exhaust a card.",
+    "triggerTimingZh": "每当你消耗一张牌时触发。",
+    "effectSummaryEn": "Adds a random card into your hand after each Exhaust trigger, turning exhaust lines into extra card generation.",
+    "effectSummaryZh": "每次消耗牌后都会向手牌加入一张随机牌，让消耗路线同时转化为额外的手牌生成。",
+    "conditionSummaryEn": "Works repeatedly in combat and scales best with decks or relics that exhaust cards often.",
+    "conditionSummaryZh": "可在战斗中反复触发，最适合会频繁消耗牌的套牌或遗物组合。",
+    "descriptionEn": "Whenever you Exhaust a card, add a random card into your Hand.",
+    "descriptionZh": "每当你消耗一张牌时，将一张随机牌加入手牌。",
+    "source": "core"
+  },
+  {
     "slug": "data-disk",
     "nameEn": "Data Disk",
     "nameZh": "数据磁盘",

@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using aibot.Scripts.Agent;
+using aibot.Scripts.Localization;
 
 namespace aibot.Scripts.Config;
 
@@ -123,6 +124,9 @@ public sealed class KnowledgeConfig
 
 public sealed class AgentUiConfig
 {
+    [JsonPropertyName("language")]
+    public string Language { get; set; } = "zh-CN";
+
     [JsonPropertyName("showChatDialog")]
     public bool ShowChatDialog { get; set; } = true;
 
@@ -143,6 +147,22 @@ public sealed class AgentUiConfig
 
     [JsonPropertyName("showRecommendOverlay")]
     public bool ShowRecommendOverlay { get; set; } = true;
+
+    public AiBotLanguage GetLanguage()
+    {
+        return Language.Trim().ToLowerInvariant() switch
+        {
+            "en" => AiBotLanguage.English,
+            "en-us" => AiBotLanguage.English,
+            "english" => AiBotLanguage.English,
+            _ => AiBotLanguage.Chinese
+        };
+    }
+
+    public void SetLanguage(AiBotLanguage language)
+    {
+        Language = language == AiBotLanguage.English ? "en-US" : "zh-CN";
+    }
 }
 
 public sealed class AgentModeHotkeyConfig

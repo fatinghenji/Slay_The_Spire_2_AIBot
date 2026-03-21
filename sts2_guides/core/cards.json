@@ -1710,6 +1710,16 @@
     "source": "core"
   },
   {
+    "slug": "electrodynamics",
+    "nameEn": "Electrodynamics",
+    "nameZh": "电动力学",
+    "characterId": 3,
+    "cardType": "power",
+    "descriptionEn": "Lightning now hits ALL enemies. Channel 2 Lightning.",
+    "descriptionZh": "闪电现在会命中所有敌人。生成2个闪电充能球。",
+    "source": "core"
+  },
+  {
     "slug": "echoing-slash",
     "nameEn": "Echoing Slash",
     "nameZh": "回响斩击",

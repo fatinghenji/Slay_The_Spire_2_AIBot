@@ -18,6 +18,7 @@ using MegaCrit.Sts2.Core.Models.Orbs;
 using MegaCrit.Sts2.Core.Nodes.Rewards;
 using aibot.Scripts.Config;
 using aibot.Scripts.Knowledge;
+using aibot.Scripts.Localization;
 
 namespace aibot.Scripts.Decision;
 
@@ -524,13 +525,14 @@ public sealed class DeepSeekDecisionEngine : IAiDecisionEngine, IDisposable
 
     private async Task<LlmDecisionResponse> ChooseOptionAsync(string instruction, string context, IReadOnlyList<DecisionOption> options, CancellationToken cancellationToken)
     {
+        var reasonLanguage = AiBotText.IsEnglish(_config) ? "English" : "Chinese";
         Exception? lastError = null;
         for (var attempt = 0; attempt < 2; attempt++)
         {
             try
             {
                 var optionsText = string.Join("\n", options.Select(option => $"- key={option.Key}; label={option.Label}; hint={option.ReasonHint}"));
-                var prompt = $"{instruction}\nContext:\n{context}\nOptions:\n{optionsText}\nOutput format:\n{{\"key\":\"exact option key\",\"reason\":\"short explanation in Chinese\"}}";
+                var prompt = $"{instruction}\nContext:\n{context}\nOptions:\n{optionsText}\nOutput format:\n{{\"key\":\"exact option key\",\"reason\":\"short explanation in {reasonLanguage}\"}}";
 
                 if (_config.Logging.LogDecisionPrompt)
                 {
@@ -570,7 +572,7 @@ public sealed class DeepSeekDecisionEngine : IAiDecisionEngine, IDisposable
                 }
 
                 var fallbackKey = content.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)[0].Trim();
-                return new LlmDecisionResponse(fallbackKey, $"DeepSeek selected option {fallbackKey}, but did not provide a structured reason.");
+                return new LlmDecisionResponse(fallbackKey, AiBotText.Pick(_config, $"DeepSeek 选择了选项 {fallbackKey}，但没有返回结构化原因。", $"DeepSeek selected option {fallbackKey}, but did not provide a structured reason."));
             }
             catch (Exception ex) when (ShouldRetryFirstRequest(ex, attempt, cancellationToken))
             {
@@ -608,8 +610,9 @@ public sealed class DeepSeekDecisionEngine : IAiDecisionEngine, IDisposable
         return Interlocked.CompareExchange(ref _completedRequestCount, 0, 0) == 0;
     }
 
-    private static string BuildSystemPrompt()
+    private string BuildSystemPrompt()
     {
+        var reasonLanguage = AiBotText.IsEnglish(_config) ? "English" : "Chinese";
         return "You are an expert Slay the Spire 2 autoplayer AI. You reason like a top-level human player who consistently wins high-ascension runs. "
             + "FUNDAMENTAL TURN RULES (these override everything else): "
             + "Rule A: Energy resets every turn — unspent energy is permanently lost. If you have playable cards and energy remaining, you MUST play them before ending the turn. "
@@ -630,7 +633,7 @@ public sealed class DeepSeekDecisionEngine : IAiDecisionEngine, IDisposable
             + "(5) NEVER end the turn with unspent energy and playable cards — even a basic Strike/Defend is better than wasting energy. Energy wasted = value permanently lost. "
             + "(6) Block incoming damage first, then spend remaining energy on offense. Exception: if offense kills the enemy, that prevents all future damage. "
             + "(7) Route wisely: fight elites when healthy for relics, rest when below 55% HP, upgrade key cards at campfires when healthy, shop for removal when deck has weak cards. "
-            + "Output exactly one JSON object with fields 'key' and 'reason'. The 'key' must be an exact option key from the provided list. The 'reason' should be a concise strategic explanation in Chinese.";
+            + $"Output exactly one JSON object with fields 'key' and 'reason'. The 'key' must be an exact option key from the provided list. The 'reason' should be a concise strategic explanation in {reasonLanguage}.";
     }
 
     public void Dispose()

@@ -26,10 +26,12 @@ using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
+using MegaCrit.Sts2.Core.Nodes.Screens.TreasureRoomRelic;
 using MegaCrit.Sts2.Core.Runs;
 using aibot.Scripts.Agent;
 using aibot.Scripts.Core;
 using aibot.Scripts.Decision;
+using aibot.Scripts.Localization;
 
 namespace aibot.Scripts.Ui;
 
@@ -40,6 +42,7 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
     private readonly List<RecommendationBadge> _badges = new();
     private AiBotRuntime? _runtime;
     private string _lastSignature = string.Empty;
+    private string _queuedSignature = string.Empty;
     private bool _refreshInFlight;
     private double _lastRefreshTime;
 
@@ -115,24 +118,51 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
             return;
         }
 
-        if (_refreshInFlight || Time.GetTicksMsec() - _lastRefreshTime < 650)
+        if (IsActionQueueBusy())
         {
+            if (_badges.Count > 0)
+            {
+                ClearBadges();
+            }
+
+            _lastSignature = string.Empty;
             return;
         }
 
         var signature = BuildSignature();
+        if (signature != _lastSignature && _badges.Count > 0)
+        {
+            ClearBadges();
+        }
+
+        if (_refreshInFlight)
+        {
+            if (signature != _lastSignature)
+            {
+                _queuedSignature = signature;
+            }
+
+            return;
+        }
+
+        if (Time.GetTicksMsec() - _lastRefreshTime < 50)
+        {
+            return;
+        }
+
         if (signature == _lastSignature)
         {
             return;
         }
 
         _lastSignature = signature;
+        _queuedSignature = string.Empty;
         _lastRefreshTime = Time.GetTicksMsec();
         _refreshInFlight = true;
-        TaskHelper.RunSafely(RefreshAsync());
+        TaskHelper.RunSafely(RefreshAsync(signature));
     }
 
-    private async Task RefreshAsync()
+    private async Task RefreshAsync(string expectedSignature)
     {
         try
         {
@@ -144,12 +174,18 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
 
             var added = await TryRefreshOverlayRecommendationAsync()
                 || await TryRefreshCombatRecommendationAsync()
+                || await TryRefreshTreasureRelicRecommendationAsync()
                 || await TryRefreshShopRecommendationAsync()
                 || await TryRefreshRestSiteRecommendationAsync()
                 || await TryRefreshEventRecommendationAsync()
                 || await TryRefreshMapRecommendationAsync();
 
             if (!added)
+            {
+                ClearBadges();
+            }
+
+            if (!IsSignatureCurrent(expectedSignature))
             {
                 ClearBadges();
             }
@@ -162,6 +198,11 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
         finally
         {
             _refreshInFlight = false;
+            if (!string.IsNullOrWhiteSpace(_queuedSignature) && _queuedSignature != _lastSignature)
+            {
+                _lastSignature = string.Empty;
+                _lastRefreshTime = 0d;
+            }
         }
     }
 
@@ -211,7 +252,7 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
             return false;
         }
 
-        ReplaceWithSingleBadge(target, decision.Reason, "卡牌奖励推荐");
+        ReplaceWithSingleBadge(target, decision.Reason, AiBotText.Pick(_runtime.Config, "卡牌奖励推荐", "Card Reward"));
         return true;
     }
 
@@ -241,7 +282,7 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
             return false;
         }
 
-        ReplaceWithSingleBadge(target, decision.Reason, "遗物推荐");
+        ReplaceWithSingleBadge(target, decision.Reason, AiBotText.Pick(_runtime.Config, "遗物推荐", "Relic"));
         return true;
     }
 
@@ -269,7 +310,7 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
             CancellationToken.None);
 
         var target = bundles.FirstOrDefault(entry => entry.Index == decision.SelectedIndex)?.Bundle ?? bundles[0].Bundle;
-        ReplaceWithSingleBadge(target, decision.Reason, "Bundle 推荐");
+        ReplaceWithSingleBadge(target, decision.Reason, AiBotText.Pick(_runtime.Config, "Bundle 推荐", "Bundle"));
         return true;
     }
 
@@ -283,7 +324,7 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
         var proceedButton = screen.GetNodeOrNull<NProceedButton>("%ProceedButton");
         if (proceedButton is not null && proceedButton.IsEnabled)
         {
-            ReplaceWithSingleBadge(proceedButton, "当前可以直接结束 Crystal Sphere 选择。", "Crystal Sphere 推荐");
+            ReplaceWithSingleBadge(proceedButton, AiBotText.Pick(_runtime.Config, "当前可以直接结束 Crystal Sphere 选择。", "You can finish the Crystal Sphere choice now."), "Crystal Sphere");
             return true;
         }
 
@@ -310,8 +351,10 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
 
         var decision = await _runtime.DecisionEngine.ChooseCrystalSphereActionAsync(minigame, _runtime.GetCurrentAnalysis(), CancellationToken.None);
         var target = hiddenCells.FirstOrDefault(cell => cell.Entity.X == decision.X && cell.Entity.Y == decision.Y) ?? hiddenCells[0];
-        var reason = decision.Reason + (decision.UseBigDivination ? "（推荐大范围占卜）" : "（推荐小范围占卜）");
-        ReplaceWithSingleBadge(target, reason, "Crystal Sphere 推荐");
+        var reason = decision.Reason + (decision.UseBigDivination
+            ? AiBotText.Pick(_runtime.Config, "（推荐大范围占卜）", " (big divination recommended)")
+            : AiBotText.Pick(_runtime.Config, "（推荐小范围占卜）", " (small divination recommended)"));
+        ReplaceWithSingleBadge(target, reason, "Crystal Sphere");
         return true;
     }
 
@@ -335,7 +378,7 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
 
         var decision = await _runtime.DecisionEngine.ChooseRewardAsync(buttons, player?.HasOpenPotionSlots ?? false, _runtime.GetCurrentAnalysis(), CancellationToken.None);
         var target = decision.Button ?? buttons[0];
-        ReplaceWithSingleBadge(target, decision.Reason, "奖励领取推荐");
+        ReplaceWithSingleBadge(target, decision.Reason, AiBotText.Pick(_runtime.Config, "奖励领取推荐", "Rewards"));
         return true;
     }
 
@@ -366,14 +409,14 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
 
         var pointLookup = allMapPoints.ToDictionary(point => point.Point.coord, point => point);
         var candidateNodes = ResolveCandidateMapNodes(runState, allMapPoints, pointLookup)
-            .Where(node => node.State == MapPointState.Travelable && node.IsVisibleInTree())
+            .Where(node => node.State == MapPointState.Travelable)
             .OrderBy(node => node.Point.coord.col)
             .ToList();
 
         if (candidateNodes.Count == 0)
         {
             candidateNodes = allMapPoints
-                .Where(node => node.State == MapPointState.Travelable && node.IsVisibleInTree())
+                .Where(node => node.State == MapPointState.Travelable)
                 .OrderBy(node => node.Point.coord.row)
                 .ThenBy(node => node.Point.coord.col)
                 .ToList();
@@ -397,7 +440,47 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
             ? nodeTarget
             : candidateNodes[0];
 
-        ReplaceWithSingleBadge(target, decision.Reason, "路线推荐");
+        ReplaceWithSingleBadge(target, decision.Reason, AiBotText.Pick(_runtime.Config, "路线推荐", "Route"));
+        return true;
+    }
+
+    private async Task<bool> TryRefreshTreasureRelicRecommendationAsync()
+    {
+        if (_runtime?.DecisionEngine is null)
+        {
+            return false;
+        }
+
+        var room = GetAbsoluteNodeOrNull<NTreasureRoom>("/root/Game/RootSceneContainer/Run/RoomContainer/TreasureRoom");
+        if (room is null || !room.IsVisibleInTree())
+        {
+            return false;
+        }
+
+        var relicHolders = UiHelper.FindAll<NTreasureRoomRelicHolder>(room)
+            .Where(holder => holder.IsEnabled && holder.Visible && holder.IsVisibleInTree() && holder.Relic?.Model is not null)
+            .ToList();
+        if (relicHolders.Count == 0)
+        {
+            return false;
+        }
+
+        var decision = await _runtime.DecisionEngine.ChooseRelicAsync(
+            relicHolders.Select(holder => holder.Relic.Model).ToList(),
+            "Treasure Room",
+            false,
+            _runtime.GetCurrentAnalysis(),
+            CancellationToken.None);
+
+        var target = decision.Relic is not null
+            ? relicHolders.FirstOrDefault(holder => holder.Relic.Model == decision.Relic || holder.Relic.Model.Id == decision.Relic.Id)
+            : relicHolders.FirstOrDefault();
+        if (target is null)
+        {
+            return false;
+        }
+
+        ReplaceWithSingleBadge(target, decision.Reason, AiBotText.Pick(_runtime.Config, "瀹濈閬楃墿鎺ㄨ崘", "Treasure Relic"));
         return true;
     }
 
@@ -422,8 +505,9 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
             return false;
         }
 
+        var handSet = hand.ToHashSet();
         var visibleHolders = UiHelper.FindAll<NCardHolder>(((SceneTree)Engine.GetMainLoop()).Root)
-            .Where(holder => holder.CardModel is not null && holder.IsVisibleInTree())
+            .Where(holder => holder.CardModel is not null && holder.IsVisibleInTree() && handSet.Contains(holder.CardModel))
             .ToList();
         if (visibleHolders.Count == 0)
         {
@@ -438,13 +522,13 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
             return false;
         }
 
-        var target = visibleHolders.FirstOrDefault(holder => holder.CardModel == decision.Card || holder.CardModel?.Id == decision.Card.Id);
+        var target = visibleHolders.FirstOrDefault(holder => holder.CardModel == decision.Card);
         if (target is null)
         {
             return false;
         }
 
-        ReplaceWithSingleBadge(target, decision.Reason, "战斗手牌推荐");
+        ReplaceWithSingleBadge(target, decision.Reason, AiBotText.Pick(_runtime.Config, "战斗手牌推荐", "Combat Play"));
         return true;
     }
 
@@ -490,7 +574,7 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
             return false;
         }
 
-        ReplaceWithSingleBadge(slot, decision.Reason, "商店推荐");
+        ReplaceWithSingleBadge(slot, decision.Reason, AiBotText.Pick(_runtime.Config, "商店推荐", "Shop"));
         return true;
     }
 
@@ -527,7 +611,7 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
             return false;
         }
 
-        ReplaceWithSingleBadge(target, decision.Reason, "休息点推荐");
+        ReplaceWithSingleBadge(target, decision.Reason, AiBotText.Pick(_runtime.Config, "休息点推荐", "Rest Site"));
         return true;
     }
 
@@ -557,7 +641,7 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
             return false;
         }
 
-        ReplaceWithSingleBadge(target, decision.Reason, "事件选项推荐");
+        ReplaceWithSingleBadge(target, decision.Reason, AiBotText.Pick(_runtime.Config, "事件选项推荐", "Event"));
         return true;
     }
 
@@ -565,7 +649,7 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
     {
         ClearBadges();
 
-        var badge = new RecommendationBadge(target, reason, category);
+        var badge = new RecommendationBadge(target, reason, category, AiBotText.Pick(_runtime?.Config, "推荐", "Recommended"));
         _badges.Add(badge);
         AddChild(badge.Container);
         badge.UpdatePosition();
@@ -664,13 +748,43 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
             return "map:" + string.Join("|", coords);
         }
 
+        var treasureRoom = GetAbsoluteNodeOrNull<NTreasureRoom>("/root/Game/RootSceneContainer/Run/RoomContainer/TreasureRoom");
+        if (treasureRoom is not null && treasureRoom.IsVisibleInTree())
+        {
+            var relics = UiHelper.FindAll<NTreasureRoomRelicHolder>(treasureRoom)
+                .Where(holder => holder.IsEnabled && holder.Visible && holder.IsVisibleInTree() && holder.Relic?.Model is not null)
+                .Select(holder => holder.Relic.Model.Title.GetFormattedText())
+                .ToList();
+            if (relics.Count > 0)
+            {
+                return "treasure-relic:" + string.Join("|", relics);
+            }
+        }
+
         if (CombatManager.Instance.IsInProgress && CombatManager.Instance.IsPlayPhase)
         {
-            var combatCards = UiHelper.FindAll<NCardHolder>(((SceneTree)Engine.GetMainLoop()).Root)
-                .Where(holder => holder.CardModel is not null && holder.IsVisibleInTree())
-                .Select(holder => holder.CardModel!.Id.ToString())
+            if (IsActionQueueBusy())
+            {
+                return "combat-busy";
+            }
+
+            var runState = RunManager.Instance.DebugOnlyGetState();
+            var player = LocalContext.GetMe(runState);
+            if (player?.Creature?.CombatState is null)
+            {
+                return "combat";
+            }
+
+            var hand = PileType.Hand.GetPile(player).Cards
+                .Select(card => card.Id.ToString())
+                .OrderBy(id => id, StringComparer.Ordinal)
                 .ToList();
-            return "combat:" + string.Join("|", combatCards);
+            var enemies = player.Creature.CombatState.HittableEnemies?
+                .Where(enemy => enemy.IsAlive)
+                .Select(enemy => $"{enemy.Name}:{enemy.CurrentHp}:{enemy.Block}")
+                .OrderBy(text => text, StringComparer.Ordinal)
+                .ToList() ?? new List<string>();
+            return $"combat:{player.PlayerCombatState?.Energy ?? -1}|{string.Join(",", hand)}|{string.Join(",", enemies)}";
         }
 
         var merchantRoom = GetAbsoluteNodeOrNull<NMerchantRoom>("/root/Game/RootSceneContainer/Run/RoomContainer/MerchantRoom");
@@ -719,6 +833,17 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
         return card.CanPlay(out reason, out preventer);
     }
 
+    private static bool IsActionQueueBusy()
+    {
+        var executor = RunManager.Instance.ActionExecutor;
+        return executor is not null && (executor.IsRunning || executor.CurrentlyRunningAction is not null);
+    }
+
+    private bool IsSignatureCurrent(string expectedSignature)
+    {
+        return string.Equals(BuildSignature(), expectedSignature, StringComparison.Ordinal);
+    }
+
     private static T? GetAbsoluteNodeOrNull<T>(string path) where T : class
     {
         var root = ((SceneTree)Engine.GetMainLoop()).Root;
@@ -754,7 +879,7 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
     {
         private readonly WeakReference<Control> _targetRef;
 
-        public RecommendationBadge(Control target, string reason, string category)
+        public RecommendationBadge(Control target, string reason, string category, string badgeText)
         {
             _targetRef = new WeakReference<Control>(target);
             Container = new PanelContainer
@@ -765,17 +890,18 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
             };
 
             var margin = new MarginContainer();
-            margin.AddThemeConstantOverride("margin_left", 6);
-            margin.AddThemeConstantOverride("margin_right", 6);
-            margin.AddThemeConstantOverride("margin_top", 2);
-            margin.AddThemeConstantOverride("margin_bottom", 2);
+            margin.AddThemeConstantOverride("margin_left", 10);
+            margin.AddThemeConstantOverride("margin_right", 10);
+            margin.AddThemeConstantOverride("margin_top", 4);
+            margin.AddThemeConstantOverride("margin_bottom", 4);
             Container.AddChild(margin);
 
             var label = new Label
             {
-                Text = "推荐",
+                Text = badgeText,
                 MouseFilter = Control.MouseFilterEnum.Ignore
             };
+            label.AddThemeFontSizeOverride("font_size", 18);
             margin.AddChild(label);
         }
 
@@ -798,8 +924,8 @@ public sealed partial class AgentRecommendOverlay : CanvasLayer
                 return;
             }
 
-            var x = target.GlobalPosition.X + Mathf.Max(0f, target.Size.X - 52f);
-            var y = target.GlobalPosition.Y - 18f;
+            var x = target.GlobalPosition.X + Mathf.Max(0f, target.Size.X - 120f);
+            var y = target.GlobalPosition.Y - 28f;
             Container.Position = new Vector2(x, y);
         }
     }

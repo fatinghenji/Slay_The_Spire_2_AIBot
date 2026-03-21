@@ -1,9 +1,10 @@
 using System.Collections.Concurrent;
 using System.Text;
 using Godot;
-using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Logging;
 using aibot.Scripts.Agent;
 using aibot.Scripts.Core;
+using aibot.Scripts.Localization;
 
 namespace aibot.Scripts.Ui;
 
@@ -26,6 +27,7 @@ public sealed partial class AgentChatDialog : CanvasLayer
 
     private AiBotRuntime? _runtime;
     private AgentMode _mode;
+    private bool _chatHotkeyDown;
 
     public AgentChatDialog()
     {
@@ -56,7 +58,6 @@ public sealed partial class AgentChatDialog : CanvasLayer
 
         _title = new Label
         {
-            Text = "Agent Chat",
             HorizontalAlignment = HorizontalAlignment.Left
         };
         layout.AddChild(_title);
@@ -68,8 +69,7 @@ public sealed partial class AgentChatDialog : CanvasLayer
             FitContent = false,
             SelectionEnabled = true,
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            Text = "输入消息后，Agent 会在这里回复。"
+            AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
         layout.AddChild(_history);
 
@@ -78,15 +78,11 @@ public sealed partial class AgentChatDialog : CanvasLayer
 
         _input = new LineEdit
         {
-            PlaceholderText = "输入指令或问题..."
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
-        _input.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         inputRow.AddChild(_input);
 
-        _sendButton = new Button
-        {
-            Text = "发送"
-        };
+        _sendButton = new Button();
         inputRow.AddChild(_sendButton);
 
         _sendButton.Pressed += async () => await SubmitAsync();
@@ -118,17 +114,11 @@ public sealed partial class AgentChatDialog : CanvasLayer
         var pendingButtons = new HBoxContainer();
         pendingLayout.AddChild(pendingButtons);
 
-        _confirmButton = new Button
-        {
-            Text = "确认执行"
-        };
+        _confirmButton = new Button();
         _confirmButton.Pressed += async () => await SubmitSpecialCommandAsync("确认执行");
         pendingButtons.AddChild(_confirmButton);
 
-        _cancelButton = new Button
-        {
-            Text = "取消"
-        };
+        _cancelButton = new Button();
         _cancelButton.Pressed += async () => await SubmitSpecialCommandAsync("取消执行");
         pendingButtons.AddChild(_cancelButton);
 
@@ -140,6 +130,7 @@ public sealed partial class AgentChatDialog : CanvasLayer
         if (_instance is not null && GodotObject.IsInstanceValid(_instance) && _instance.GetParent() is not null)
         {
             _instance._runtime = runtime;
+            _instance.ApplyLanguage();
             return;
         }
 
@@ -166,16 +157,12 @@ public sealed partial class AgentChatDialog : CanvasLayer
         }
 
         _instance._mode = mode;
-        _instance._title.Text = mode switch
-        {
-            AgentMode.SemiAuto => "Agent Chat - Semi Auto",
-            AgentMode.QnA => "Agent Chat - QnA",
-            _ => "Agent Chat"
-        };
+        _instance.ApplyLanguage();
         if (mode != AgentMode.SemiAuto)
         {
             _instance.ClearPendingActionInternal();
         }
+
         _instance.Visible = true;
         if (!string.IsNullOrWhiteSpace(systemMessage))
         {
@@ -183,6 +170,7 @@ public sealed partial class AgentChatDialog : CanvasLayer
         }
 
         _instance.SyncMessagesFromSession();
+        _instance._input.GrabFocus();
     }
 
     public static void HideDialog()
@@ -193,6 +181,38 @@ public sealed partial class AgentChatDialog : CanvasLayer
         }
 
         _instance.Visible = false;
+    }
+
+    public static bool IsDialogVisible =>
+        _instance is not null &&
+        GodotObject.IsInstanceValid(_instance) &&
+        _instance.Visible;
+
+    public static void ToggleForMode(AgentMode mode)
+    {
+        if (_instance is null)
+        {
+            return;
+        }
+
+        if (_instance._runtime?.Config.Ui.ShowChatDialog != true)
+        {
+            _instance.Visible = false;
+            return;
+        }
+
+        if (mode is not AgentMode.SemiAuto and not AgentMode.QnA)
+        {
+            return;
+        }
+
+        if (_instance.Visible && _instance._mode == mode)
+        {
+            HideDialog();
+            return;
+        }
+
+        ShowForMode(mode);
     }
 
     public static void ShowPendingAction(string text)
@@ -211,32 +231,33 @@ public sealed partial class AgentChatDialog : CanvasLayer
         _instance?.ClearPendingActionInternal();
     }
 
-    public override void _UnhandledInput(InputEvent @event)
+    public override void _Ready()
     {
-        base._UnhandledInput(@event);
-        if (_runtime?.Config.Ui.ShowChatDialog != true)
+        base._Ready();
+        SetProcess(true);
+        SetProcessShortcutInput(true);
+        SetProcessUnhandledKeyInput(true);
+        if (_runtime is not null)
         {
-            return;
+            _runtime.UiLanguageChanged += OnUiLanguageChanged;
         }
 
-        if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo)
+        ApplyLanguage();
+    }
+
+    public override void _ExitTree()
+    {
+        if (_runtime is not null)
         {
-            return;
+            _runtime.UiLanguageChanged -= OnUiLanguageChanged;
         }
 
-        if (HotkeyMatches(_runtime?.Config.Ui.ChatHotkey, keyEvent.Keycode))
-        {
-            Visible = !Visible;
-            if (Visible)
-            {
-                _input.GrabFocus();
-            }
-            GetViewport().SetInputAsHandled();
-        }
+        base._ExitTree();
     }
 
     public override void _Process(double delta)
     {
+        base._Process(delta);
         var changed = false;
         while (_pendingMessages.TryDequeue(out var item))
         {
@@ -248,52 +269,20 @@ public sealed partial class AgentChatDialog : CanvasLayer
         {
             RefreshText();
         }
+
+        PollChatHotkey();
     }
 
-    private async Task SubmitAsync()
+    public override void _ShortcutInput(InputEvent @event)
     {
-        var text = _input.Text.Trim();
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return;
-        }
-
-        _input.Text = string.Empty;
-        EnqueueMessage("你", text);
-        EnqueueMessage("系统", "处理中...");
-
-        try
-        {
-            await AgentCore.Instance.SubmitUserInputAsync(text);
-            SyncMessagesFromSession();
-        }
-        catch (Exception ex)
-        {
-            AgentCore.Instance.ConversationSessions.AddAgentMessage(_mode, $"处理失败：{ex.Message}");
-            SyncMessagesFromSession();
-        }
+        base._ShortcutInput(@event);
+        CaptureFocusedKeyboardInput(@event);
     }
 
-    private async Task SubmitSpecialCommandAsync(string command)
+    public override void _UnhandledKeyInput(InputEvent @event)
     {
-        EnqueueMessage("你", command);
-        EnqueueMessage("系统", "处理中...");
-
-        try
-        {
-            await AgentCore.Instance.SubmitUserInputAsync(command);
-            SyncMessagesFromSession();
-        }
-        catch (Exception ex)
-        {
-            AgentCore.Instance.ConversationSessions.AddAgentMessage(_mode, $"处理失败：{ex.Message}");
-            SyncMessagesFromSession();
-        }
-    }
-
-    private void EnqueueMessage(string role, string content)
-    {
-        _pendingMessages.Enqueue((role, content));
+        base._UnhandledKeyInput(@event);
+        CaptureFocusedKeyboardInput(@event);
     }
 
     public void SyncMessagesFromSession()
@@ -311,11 +300,59 @@ public sealed partial class AgentChatDialog : CanvasLayer
         RefreshText();
     }
 
+    private async Task SubmitAsync()
+    {
+        var text = _input.Text.Trim();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        _input.Text = string.Empty;
+        EnqueueMessage(AiBotText.RoleName(_runtime?.Config, AgentConversationRole.User), text);
+        EnqueueMessage(AiBotText.RoleName(_runtime?.Config, AgentConversationRole.System), AiBotText.Pick(_runtime?.Config, "处理中...", "Working..."));
+
+        try
+        {
+            await AgentCore.Instance.SubmitUserInputAsync(text);
+            SyncMessagesFromSession();
+        }
+        catch (Exception ex)
+        {
+            AgentCore.Instance.ConversationSessions.AddAgentMessage(_mode, AiBotText.Pick(_runtime?.Config, $"处理失败：{ex.Message}", $"Request failed: {ex.Message}"));
+            SyncMessagesFromSession();
+        }
+    }
+
+    private async Task SubmitSpecialCommandAsync(string command)
+    {
+        EnqueueMessage(AiBotText.RoleName(_runtime?.Config, AgentConversationRole.User), command);
+        EnqueueMessage(AiBotText.RoleName(_runtime?.Config, AgentConversationRole.System), AiBotText.Pick(_runtime?.Config, "处理中...", "Working..."));
+
+        try
+        {
+            await AgentCore.Instance.SubmitUserInputAsync(command);
+            SyncMessagesFromSession();
+        }
+        catch (Exception ex)
+        {
+            AgentCore.Instance.ConversationSessions.AddAgentMessage(_mode, AiBotText.Pick(_runtime?.Config, $"处理失败：{ex.Message}", $"Request failed: {ex.Message}"));
+            SyncMessagesFromSession();
+        }
+    }
+
+    private void EnqueueMessage(string role, string content)
+    {
+        _pendingMessages.Enqueue((role, content));
+    }
+
     private void RefreshText()
     {
         if (_messages.Count == 0)
         {
-            _history.Text = "输入消息后，Agent 会在这里回复。";
+            _history.Text = AiBotText.Pick(_runtime?.Config,
+                "输入消息后，Agent 会在这里回复。",
+                "Type a message and the agent will reply here.");
             return;
         }
 
@@ -336,25 +373,92 @@ public sealed partial class AgentChatDialog : CanvasLayer
         _pendingPanel.Visible = false;
     }
 
-    private static string MapRole(AgentConversationRole role)
+    private string MapRole(AgentConversationRole role)
     {
-        return role switch
-        {
-            AgentConversationRole.System => "系统",
-            AgentConversationRole.User => "你",
-            AgentConversationRole.Agent => "Agent",
-            _ => "消息"
-        };
+        return AiBotText.RoleName(_runtime?.Config, role);
     }
 
-    private static bool HotkeyMatches(string? configuredHotkey, Key keycode)
+    private void PollChatHotkey()
     {
+        if (_runtime?.Config.Ui.ShowChatDialog != true)
+        {
+            _chatHotkeyDown = false;
+            return;
+        }
+
+        var isPressed = IsHotkeyPressed(_runtime.Config.Ui.ChatHotkey);
+        if (Visible && _input.HasFocus())
+        {
+            _chatHotkeyDown = isPressed;
+            return;
+        }
+
+        if (isPressed && !_chatHotkeyDown)
+        {
+            Visible = !Visible;
+            Log.Info($"[AiBot.Agent] Chat hotkey detected. Visible={Visible}");
+            if (Visible)
+            {
+                _input.GrabFocus();
+            }
+        }
+
+        _chatHotkeyDown = isPressed;
+    }
+
+    private void ApplyLanguage()
+    {
+        _title.Text = _mode switch
+        {
+            AgentMode.SemiAuto => AiBotText.Pick(_runtime?.Config, "Agent 对话 - 半自动", "Agent Chat - Semi Auto"),
+            AgentMode.QnA => AiBotText.Pick(_runtime?.Config, "Agent 对话 - 问答", "Agent Chat - QnA"),
+            _ => AiBotText.Pick(_runtime?.Config, "Agent 对话", "Agent Chat")
+        };
+
+        _input.PlaceholderText = AiBotText.Pick(_runtime?.Config, "输入指令或问题...", "Enter a command or question...");
+        _sendButton.Text = AiBotText.Pick(_runtime?.Config, "发送", "Send");
+        _confirmButton.Text = AiBotText.Pick(_runtime?.Config, "确认执行", "Confirm");
+        _cancelButton.Text = AiBotText.Pick(_runtime?.Config, "取消执行", "Cancel");
+        RefreshText();
+    }
+
+    private void OnUiLanguageChanged(AiBotLanguage language)
+    {
+        ApplyLanguage();
+    }
+
+    private void CaptureFocusedKeyboardInput(InputEvent @event)
+    {
+        if (!ShouldCaptureFocusedKeyboardInput(@event))
+        {
+            return;
+        }
+
+        GetViewport().SetInputAsHandled();
+    }
+
+    private bool ShouldCaptureFocusedKeyboardInput(InputEvent @event)
+    {
+        return Visible
+            && _input.HasFocus()
+            && @event is InputEventKey;
+    }
+
+    private static bool IsHotkeyPressed(string? configuredHotkey)
+    {
+        return TryParseHotkey(configuredHotkey, out var parsed)
+            && (Input.IsKeyPressed(parsed) || Input.IsPhysicalKeyPressed(parsed));
+    }
+
+    private static bool TryParseHotkey(string? configuredHotkey, out Key parsed)
+    {
+        parsed = Key.None;
         if (string.IsNullOrWhiteSpace(configuredHotkey))
         {
             return false;
         }
 
         var normalized = configuredHotkey.Trim().Replace("-", string.Empty).Replace(" ", string.Empty);
-        return Enum.TryParse<Key>(normalized, true, out var parsed) && parsed == keycode;
+        return Enum.TryParse(normalized, true, out parsed);
     }
 }

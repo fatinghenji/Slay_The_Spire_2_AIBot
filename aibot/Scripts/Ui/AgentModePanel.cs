@@ -21,9 +21,11 @@ public sealed partial class AgentModePanel : CanvasLayer
     private readonly Label _confirmLabel;
     private readonly Button _confirmYesButton;
     private readonly Button _confirmNoButton;
+    private readonly Dictionary<AgentMode, bool> _modeHotkeyDownStates = new();
 
     private AiBotRuntime? _runtime;
     private AgentModeChangeRequest? _pendingRequest;
+    private bool _modePanelHotkeyDown;
 
     public AgentModePanel()
     {
@@ -160,6 +162,7 @@ public sealed partial class AgentModePanel : CanvasLayer
     public override void _Ready()
     {
         base._Ready();
+        SetProcess(true);
         AgentCore.Instance.ModeChangeRequested += OnModeChangeRequested;
         AgentCore.Instance.ModeChanged += OnModeChanged;
         ApplyRuntimeConfiguration();
@@ -173,30 +176,15 @@ public sealed partial class AgentModePanel : CanvasLayer
         base._ExitTree();
     }
 
-    public override void _UnhandledInput(InputEvent @event)
+    public override void _Process(double delta)
     {
-        base._UnhandledInput(@event);
+        base._Process(delta);
         if (_runtime is null)
         {
             return;
         }
 
-        if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo)
-        {
-            return;
-        }
-
-        if (TryHandleModeHotkey(keyEvent.Keycode))
-        {
-            GetViewport().SetInputAsHandled();
-            return;
-        }
-
-        if (_runtime.Config.Ui.ShowModePanel && HotkeyMatches(_runtime.Config.Ui.ModePanelHotkey, keyEvent.Keycode))
-        {
-            Visible = !Visible;
-            GetViewport().SetInputAsHandled();
-        }
+        PollHotkeys();
     }
 
     private async Task RequestModeSwitchAsync(AgentMode mode)
@@ -283,26 +271,38 @@ public sealed partial class AgentModePanel : CanvasLayer
         _hintLabel.Text = BuildHotkeyHint();
     }
 
-    private bool TryHandleModeHotkey(Key keycode)
+    private void PollHotkeys()
     {
         if (_runtime is null)
         {
-            return false;
+            return;
         }
 
         foreach (var mode in new[] { AgentMode.FullAuto, AgentMode.SemiAuto, AgentMode.Assist, AgentMode.QnA })
         {
-            if (!HotkeyMatches(_runtime.Config.Ui.ModeHotkeys.GetHotkey(mode), keycode))
+            var isPressed = IsHotkeyPressed(_runtime.Config.Ui.ModeHotkeys.GetHotkey(mode));
+            var wasPressed = _modeHotkeyDownStates.TryGetValue(mode, out var currentState) && currentState;
+            _modeHotkeyDownStates[mode] = isPressed;
+
+            if (!isPressed || wasPressed)
             {
                 continue;
             }
 
             Visible = true;
+            Log.Info($"[AiBot.Agent] Mode hotkey detected: {mode}");
             TaskHelper.RunSafely(RequestModeSwitchAsync(mode));
-            return true;
+            return;
         }
 
-        return false;
+        var modePanelPressed = _runtime.Config.Ui.ShowModePanel && IsHotkeyPressed(_runtime.Config.Ui.ModePanelHotkey);
+        if (modePanelPressed && !_modePanelHotkeyDown)
+        {
+            Visible = !Visible;
+            Log.Info($"[AiBot.Agent] Mode panel hotkey detected. Visible={Visible}");
+        }
+
+        _modePanelHotkeyDown = modePanelPressed;
     }
 
     private string BuildHotkeyHint()
@@ -320,15 +320,22 @@ public sealed partial class AgentModePanel : CanvasLayer
         return $"热键：{hotkeys.FullAuto} Full Auto，{hotkeys.SemiAuto} Semi Auto，{hotkeys.Assist} Assist，{hotkeys.QnA} QnA{toggleSuffix}";
     }
 
-    private static bool HotkeyMatches(string? configuredHotkey, Key keycode)
+    private static bool IsHotkeyPressed(string? configuredHotkey)
     {
+        return TryParseHotkey(configuredHotkey, out var parsed)
+            && (Input.IsKeyPressed(parsed) || Input.IsPhysicalKeyPressed(parsed));
+    }
+
+    private static bool TryParseHotkey(string? configuredHotkey, out Key parsed)
+    {
+        parsed = Key.None;
         if (string.IsNullOrWhiteSpace(configuredHotkey))
         {
             return false;
         }
 
         var normalized = configuredHotkey.Trim().Replace("-", string.Empty).Replace(" ", string.Empty);
-        return Enum.TryParse<Key>(normalized, true, out var parsed) && parsed == keycode;
+        return Enum.TryParse(normalized, true, out parsed);
     }
 
     private void SetStatus(string text, bool isError)

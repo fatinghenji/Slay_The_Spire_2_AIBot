@@ -49,7 +49,6 @@ public sealed class AgentCore
         Registry = BuildRegistry(runtime);
         ConversationSessions = new AgentConversationSessionManager(() => Math.Max(1, _runtime?.Config.Agent.MaxConversationHistory ?? 50));
         AgentChatDialog.EnsureCreated(runtime);
-        AgentModePanel.EnsureCreated(runtime);
         AgentRecommendOverlay.EnsureCreated(runtime);
         IsInitialized = true;
         Log.Info($"[AiBot.Agent] Initialized. DefaultMode={CurrentMode}");

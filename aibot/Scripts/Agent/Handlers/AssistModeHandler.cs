@@ -1,5 +1,6 @@
 using MegaCrit.Sts2.Core.Logging;
 using aibot.Scripts.Core;
+using aibot.Scripts.Localization;
 using aibot.Scripts.Ui;
 
 namespace aibot.Scripts.Agent.Handlers;
@@ -39,7 +40,10 @@ public sealed class AssistModeHandler : IAgentModeHandler
 
     public Task<string> OnUserInputAsync(string input, CancellationToken cancellationToken)
     {
-        return Task.FromResult("辅助模式已开启：我会在关键决策点贴出“推荐”标签，但不会自动点击执行。当前首版支持卡牌奖励、遗物选择和地图选路推荐。");
+        return Task.FromResult(AiBotText.Pick(
+            _runtime.Config,
+            "辅助模式已开启：我会在关键决策点贴出推荐标签，但不会自动点击执行。当前支持战斗出牌、卡牌奖励、奖励领取、bundle、遗物、宝箱遗物、地图路线、商店、篝火和事件选项推荐。",
+            "Assist mode is active: I will place recommendation badges on major decision points without clicking for you. Current coverage includes combat plays, card rewards, reward claims, bundles, relics, treasure-room relics, map routes, shops, rest sites, and event options."));
     }
 
     public void Dispose()

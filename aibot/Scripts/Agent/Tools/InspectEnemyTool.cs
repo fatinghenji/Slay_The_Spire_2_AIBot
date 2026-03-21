@@ -9,7 +9,7 @@ public sealed class InspectEnemyTool : RuntimeBackedToolBase
     {
     }
 
-    public override string Name => "inspect_enemies";
+    public override string Name => "inspect_enemy";
 
     public override string Description => "查看当前敌人、战斗态势与威胁摘要。";
 

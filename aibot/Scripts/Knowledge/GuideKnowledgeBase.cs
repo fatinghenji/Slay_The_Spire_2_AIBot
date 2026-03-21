@@ -60,18 +60,18 @@ public sealed class GuideKnowledgeBase
     public void Load()
     {
         Directory.CreateDirectory(RootDirectory);
-        OverviewMarkdown = ReadTextFromAliases("overview.md", "00_OVERVIEW.md");
-        KnowledgeMarkdown = ReadTextFromAliases("general_strategy.md", "sts2_knowledge_base.md");
-        Characters = LoadLayeredList<CharacterGuideEntry>("characters.json", "characters_full.json", entry => entry.Id.ToString());
-        Builds = LoadLayeredList<BuildGuideEntry>("builds.json", "builds_full.json", entry => entry.Id.ToString());
-        Cards = LoadLayeredList<CardGuideEntry>("cards.json", "cards_full.json", entry => Normalize(entry.Slug));
-        Relics = LoadLayeredList<RelicGuideEntry>("relics.json", "relics_full.json", entry => Normalize(entry.Slug));
-        Potions = LoadLayeredList<PotionEntry>("potions.json", "potions.json", entry => Normalize(entry.Slug));
-        Powers = LoadLayeredList<PowerEntry>("powers.json", "powers.json", entry => Normalize(entry.Slug));
-        Enemies = LoadLayeredList<EnemyEntry>("enemies.json", "enemies.json", entry => Normalize(entry.Slug));
-        Events = LoadLayeredList<EventEntry>("events.json", "events.json", entry => Normalize(entry.Slug));
-        Enchantments = LoadLayeredList<EnchantmentEntry>("enchantments.json", "enchantments.json", entry => Normalize(entry.Slug));
-        Mechanics = LoadLayeredList<MechanicRule>("game_mechanics.json", "game_mechanics.json", entry => Normalize(entry.Id));
+        OverviewMarkdown = ReadTextFromAliases("overview.md");
+        KnowledgeMarkdown = ReadTextFromAliases("general_strategy.md");
+        Characters = LoadLayeredList<CharacterGuideEntry>("characters.json", entry => entry.Id.ToString());
+        Builds = LoadLayeredList<BuildGuideEntry>("builds.json", entry => entry.Id.ToString());
+        Cards = LoadLayeredList<CardGuideEntry>("cards.json", entry => Normalize(entry.Slug));
+        Relics = LoadLayeredList<RelicGuideEntry>("relics.json", entry => Normalize(entry.Slug));
+        Potions = LoadLayeredList<PotionEntry>("potions.json", entry => Normalize(entry.Slug));
+        Powers = LoadLayeredList<PowerEntry>("powers.json", entry => Normalize(entry.Slug));
+        Enemies = LoadLayeredList<EnemyEntry>("enemies.json", entry => Normalize(entry.Slug));
+        Events = LoadLayeredList<EventEntry>("events.json", entry => Normalize(entry.Slug));
+        Enchantments = LoadLayeredList<EnchantmentEntry>("enchantments.json", entry => Normalize(entry.Slug));
+        Mechanics = LoadLayeredList<MechanicRule>("game_mechanics.json", entry => Normalize(entry.Id));
         CharacterGuideMarkdownById = LoadCharacterGuideMarkdown();
         CoreMechanicsSummary = BuildCoreMechanicsSummary();
 
@@ -1031,61 +1031,46 @@ public sealed class GuideKnowledgeBase
         return string.Empty;
     }
 
-    private List<TEntry> LoadLayeredList<TEntry>(string preferredName, string legacyName, Func<TEntry, string> keySelector)
+    private List<TEntry> LoadLayeredList<TEntry>(string fileName, Func<TEntry, string> keySelector)
         where TEntry : class
     {
         var merged = new Dictionary<string, TEntry>(StringComparer.OrdinalIgnoreCase);
-        foreach (var candidate in EnumerateJsonLayerCandidates(preferredName, legacyName))
+        foreach (var path in EnumerateKnowledgePaths(fileName))
         {
-            foreach (var path in EnumerateKnowledgePaths(candidate))
+            if (!File.Exists(path))
             {
-                if (!File.Exists(path))
-                {
-                    continue;
-                }
+                continue;
+            }
 
-                var validation = _validator.ValidateJsonFile(path, IsCustomPath(path), _maxCustomFileSize);
-                if (!validation.IsAccepted)
-                {
-                    Log.Warn($"[AiBot.Knowledge] Skipping json file {path}: {validation.Reason}");
-                    continue;
-                }
+            var validation = _validator.ValidateJsonFile(path, IsCustomPath(path), _maxCustomFileSize);
+            if (!validation.IsAccepted)
+            {
+                Log.Warn($"[AiBot.Knowledge] Skipping json file {path}: {validation.Reason}");
+                continue;
+            }
 
-                try
+            try
+            {
+                var list = JsonSerializer.Deserialize<List<TEntry>>(File.ReadAllText(path), JsonOptions) ?? new List<TEntry>();
+                foreach (var entry in list)
                 {
-                    var list = JsonSerializer.Deserialize<List<TEntry>>(File.ReadAllText(path), JsonOptions) ?? new List<TEntry>();
-                    foreach (var entry in list)
+                    var key = keySelector(entry);
+                    if (string.IsNullOrWhiteSpace(key))
                     {
-                        var key = keySelector(entry);
-                        if (string.IsNullOrWhiteSpace(key))
-                        {
-                            continue;
-                        }
-
-                        StampSource(entry, IsCustomPath(path) ? "custom" : "core");
-                        merged[key] = entry;
+                        continue;
                     }
+
+                    StampSource(entry, IsCustomPath(path) ? "custom" : "core");
+                    merged[key] = entry;
                 }
-                catch (Exception ex)
-                {
-                    Log.Error($"[AiBot] Failed to load knowledge file '{path}': {ex}");
-                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[AiBot] Failed to load knowledge file '{path}': {ex}");
             }
         }
 
         return merged.Values.ToList();
-    }
-
-    private IEnumerable<string> EnumerateJsonLayerCandidates(string preferredName, string legacyName)
-    {
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var name in new[] { preferredName, legacyName })
-        {
-            if (seen.Add(name))
-            {
-                yield return name;
-            }
-        }
     }
 
     private IEnumerable<string> EnumerateKnowledgePaths(string fileName)
@@ -1100,11 +1085,10 @@ public sealed class GuideKnowledgeBase
         if (_enableCustomKnowledge)
         {
             yield return customPath;
+            yield return Path.Combine(RootDirectory, _customDirectoryName, "guides", fileName);
         }
 
         yield return Path.Combine(RootDirectory, "core", fileName);
-        yield return Path.Combine(RootDirectory, fileName);
-        yield return Path.Combine(RootDirectory, "guides", fileName);
         yield return Path.Combine(RootDirectory, "core", "guides", fileName);
     }
 

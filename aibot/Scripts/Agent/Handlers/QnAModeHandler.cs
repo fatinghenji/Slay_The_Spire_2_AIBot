@@ -3,6 +3,7 @@ using aibot.Scripts.Agent.Tools;
 using aibot.Scripts.Core;
 using aibot.Scripts.Decision;
 using aibot.Scripts.Knowledge;
+using aibot.Scripts.Localization;
 using aibot.Scripts.Ui;
 
 namespace aibot.Scripts.Agent.Handlers;
@@ -28,7 +29,9 @@ public sealed class QnAModeHandler : IAgentModeHandler
     {
         _runtime.DeactivateLegacyFullAuto();
         AgentChatDialog.EnsureCreated(_runtime);
-        AgentChatDialog.ShowForMode(Mode, "问答模式已开启：优先回答杀戮尖塔2相关机制、卡牌、遗物、构筑与当前对局问题。 ");
+        AgentChatDialog.ShowForMode(Mode, AiBotText.Pick(_runtime.Config,
+            "问答模式已开启：你可以问机制、卡牌、遗物、构筑，也可以直接问“我该出什么”。",
+            "QnA mode is active: ask about mechanics, cards, relics, builds, or directly ask 'what should I play'."));
         Log.Info($"[AiBot.Agent] QnA mode entered. Reason={_activationReason}");
         return Task.CompletedTask;
     }
@@ -49,20 +52,29 @@ public sealed class QnAModeHandler : IAgentModeHandler
         var question = input?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(question))
         {
-            return "你可以直接问我卡牌、遗物、构筑、机制或当前局势。";
+            return AiBotText.Pick(_runtime.Config,
+                "你可以直接问我卡牌、遗物、构筑、机制，或者问“我该出什么”。",
+                "Ask me about cards, relics, builds, mechanics, or ask 'what should I play'.");
         }
 
-        if (!IsInGameDomain(question))
+        var combatAdvice = await TryHandleCombatAdviceQuestionAsync(question, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(combatAdvice))
         {
-            var refusal = "我目前只回答《杀戮尖塔2》游戏相关问题，例如卡牌、遗物、机制、路线和当前对局建议。";
-            AiBotDecisionFeed.Publish(new DecisionTrace("QnA", "Guardrail", "拒绝游戏外问题", question));
-            return refusal;
+            AiBotDecisionFeed.Publish(new DecisionTrace("QnA", "CombatAdvice", "Answered current-play question", combatAdvice));
+            return combatAdvice;
+        }
+
+        var currentDecisionAdvice = await TryHandleCurrentDecisionAdviceAsync(question, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(currentDecisionAdvice))
+        {
+            AiBotDecisionFeed.Publish(new DecisionTrace("QnA", "ContextDecision", "Answered current decision-screen question", currentDecisionAdvice));
+            return currentDecisionAdvice;
         }
 
         var toolResult = await TryHandleToolLikeQuestionAsync(question, cancellationToken);
         if (!string.IsNullOrWhiteSpace(toolResult))
         {
-            AiBotDecisionFeed.Publish(new DecisionTrace("QnA", "Tool", "工具式问答", toolResult));
+            AiBotDecisionFeed.Publish(new DecisionTrace("QnA", "Tool", "Tool-style answer", toolResult));
             return toolResult;
         }
 
@@ -71,19 +83,20 @@ public sealed class QnAModeHandler : IAgentModeHandler
         if (knowledgeAnswer.HasAnswer)
         {
             var response = AppendContextHint(knowledgeAnswer.Answer, analysis);
-            AiBotDecisionFeed.Publish(new DecisionTrace("QnA", "Knowledge", "本地知识检索", response));
+            AiBotDecisionFeed.Publish(new DecisionTrace("QnA", "Knowledge", "Local knowledge answer", response));
             return response;
         }
 
-        var llmAnswer = await TryAnswerWithLlmAsync(question, analysis, knowledgeAnswer, cancellationToken);
+        var augmentedToolContext = await TryBuildSupplementalToolContextAsync(question, analysis, cancellationToken);
+        var llmAnswer = await TryAnswerWithLlmAsync(question, analysis, knowledgeAnswer, augmentedToolContext, cancellationToken);
         if (!string.IsNullOrWhiteSpace(llmAnswer))
         {
-            AiBotDecisionFeed.Publish(new DecisionTrace("QnA", "LLM", "受限云端补答", llmAnswer));
+            AiBotDecisionFeed.Publish(new DecisionTrace("QnA", "LLM", "LLM answer", llmAnswer));
             return llmAnswer;
         }
 
-        var fallback = BuildAnalysisBackedFallback(analysis);
-        AiBotDecisionFeed.Publish(new DecisionTrace("QnA", "Fallback", "局势摘要兜底", fallback));
+        var fallback = BuildAnalysisBackedFallback(analysis, augmentedToolContext);
+        AiBotDecisionFeed.Publish(new DecisionTrace("QnA", "Fallback", "Analysis fallback", fallback));
         return fallback;
     }
 
@@ -92,7 +105,40 @@ public sealed class QnAModeHandler : IAgentModeHandler
         _llmBridge?.Dispose();
     }
 
-    private async Task<string?> TryAnswerWithLlmAsync(string question, RunAnalysis analysis, KnowledgeAnswer knowledgeAnswer, CancellationToken cancellationToken)
+    private async Task<string?> TryHandleCombatAdviceQuestionAsync(string question, CancellationToken cancellationToken)
+    {
+        if (!CombatAdvisor.IsCombatAdviceQuestion(question))
+        {
+            return null;
+        }
+
+        var decision = await CombatAdvisor.GetCombatDecisionAsync(_runtime, cancellationToken);
+        if (decision is null)
+        {
+            return AiBotText.Pick(_runtime.Config,
+                "当前不在可以给出出牌建议的战斗阶段。",
+                "I can't give a combat-play recommendation because the run is not currently in a playable combat state.");
+        }
+
+        return CombatAdvisor.FormatRecommendation(_runtime.Config, decision);
+    }
+
+    private async Task<string?> TryHandleCurrentDecisionAdviceAsync(string question, CancellationToken cancellationToken)
+    {
+        if (!CurrentDecisionAdvisor.LooksLikeDecisionRequest(question))
+        {
+            return null;
+        }
+
+        return await CurrentDecisionAdvisor.TryRecommendCurrentDecisionAsync(_runtime, cancellationToken);
+    }
+
+    private async Task<string?> TryAnswerWithLlmAsync(
+        string question,
+        RunAnalysis analysis,
+        KnowledgeAnswer knowledgeAnswer,
+        string? supplementalContext,
+        CancellationToken cancellationToken)
     {
         if (_llmBridge is null)
         {
@@ -100,7 +146,7 @@ public sealed class QnAModeHandler : IAgentModeHandler
         }
 
         var recentConversation = AgentCore.Instance.ConversationSessions.BuildTranscript(Mode, 8, question);
-        var answer = await _llmBridge.AnswerQuestionAsync(question, analysis, knowledgeAnswer, recentConversation, cancellationToken);
+        var answer = await _llmBridge.AnswerQuestionAsync(question, analysis, knowledgeAnswer, recentConversation, supplementalContext, cancellationToken);
         if (answer is null || string.IsNullOrWhiteSpace(answer.Content))
         {
             return null;
@@ -109,12 +155,57 @@ public sealed class QnAModeHandler : IAgentModeHandler
         return AppendContextHint(answer.Content, analysis);
     }
 
+    private async Task<string?> TryBuildSupplementalToolContextAsync(string question, RunAnalysis analysis, CancellationToken cancellationToken)
+    {
+        if (_llmBridge is null)
+        {
+            return null;
+        }
+
+        var registry = AgentCore.Instance.Registry;
+        var availableTools = registry.GetAvailableTools(Mode)
+            .Select(tool => $"{tool.Name}: {tool.Description}")
+            .ToList();
+        if (availableTools.Count == 0)
+        {
+            return null;
+        }
+
+        var recentConversation = AgentCore.Instance.ConversationSessions.BuildTranscript(Mode, 8, question);
+        var plan = await _llmBridge.RecognizeActionPlanAsync(
+            question,
+            analysis,
+            Array.Empty<string>(),
+            availableTools,
+            recentConversation,
+            cancellationToken);
+
+        if (plan is null || !string.Equals(plan.Kind, "tool", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(plan.ToolName))
+        {
+            return null;
+        }
+
+        var tool = registry.FindToolByName(plan.ToolName);
+        if (tool is null)
+        {
+            return null;
+        }
+
+        var result = await tool.QueryAsync(plan.ToolArgument, cancellationToken);
+        if (string.IsNullOrWhiteSpace(result))
+        {
+            return null;
+        }
+
+        return $"{tool.Name}\n{result.Trim()}";
+    }
+
     private async Task<string?> TryHandleToolLikeQuestionAsync(string question, CancellationToken cancellationToken)
     {
         var registry = AgentCore.Instance.Registry;
         var normalized = GuideKnowledgeBase.Normalize(question);
 
-        if (ContainsAny(normalized, "卡组", "deck"))
+        if (ContainsAny(normalized, "牌组", "deck"))
         {
             return await QueryToolAsync(registry.FindToolByName("inspect_deck"), null, cancellationToken);
         }
@@ -135,7 +226,7 @@ public sealed class QnAModeHandler : IAgentModeHandler
             return await QueryToolAsync(registry.FindToolByName("inspect_potions"), null, cancellationToken);
         }
 
-        if (ContainsAny(normalized, "敌人", "enemy", "怪", "意图"))
+        if (ContainsAny(normalized, "敌人", "enemy", "意图", "怪物"))
         {
             return await QueryToolAsync(registry.FindToolByName("inspect_enemy"), null, cancellationToken);
         }
@@ -145,14 +236,14 @@ public sealed class QnAModeHandler : IAgentModeHandler
             return await QueryToolAsync(registry.FindToolByName("inspect_map"), null, cancellationToken);
         }
 
-        if (ContainsAny(normalized, "局势", "分析", "现在该", "run"))
+        if (ContainsAny(normalized, "局势", "分析", "当前局势", "run"))
         {
             return await QueryToolAsync(registry.FindToolByName("analyze_run"), null, cancellationToken);
         }
 
-        if (ContainsAny(normalized, "卡牌", "card", "这张牌", "牌") )
+        if (ContainsAny(normalized, "卡牌", "card"))
         {
-            var cardName = ExtractTarget(question, new[] { "卡牌", "card", "这张牌", "牌" });
+            var cardName = ExtractTarget(question, new[] { "卡牌", "card" });
             if (!string.IsNullOrWhiteSpace(cardName))
             {
                 return await QueryToolAsync(registry.FindToolByName("lookup_card"), cardName, cancellationToken);
@@ -179,32 +270,6 @@ public sealed class QnAModeHandler : IAgentModeHandler
         return string.IsNullOrWhiteSpace(result) ? null : result;
     }
 
-    private static bool IsInGameDomain(string question)
-    {
-        var normalized = GuideKnowledgeBase.Normalize(question);
-        if (string.IsNullOrWhiteSpace(normalized))
-        {
-            return true;
-        }
-
-        var allowedMarkers = new[]
-        {
-            "杀戮尖塔", "sts", "spire", "卡牌", "遗物", "药水", "战斗", "构筑", "路线", "地图", "敌人", "boss", "角色", "职业", "回合", "能量", "格挡", "抽牌", "伤害", "debuff", "buff", "relic", "card", "build", "deck", "enemy", "map"
-        };
-
-        var blockedMarkers = new[]
-        {
-            "python", "javascript", "c#", "java", "算法", "股票", "天气", "新闻", "翻译", "写邮件", "简历", "数学题", "菜谱", "电影", "小说", "政治"
-        };
-
-        if (blockedMarkers.Any(marker => normalized.Contains(GuideKnowledgeBase.Normalize(marker), StringComparison.OrdinalIgnoreCase)))
-        {
-            return false;
-        }
-
-        return allowedMarkers.Any(marker => normalized.Contains(GuideKnowledgeBase.Normalize(marker), StringComparison.OrdinalIgnoreCase));
-    }
-
     private static bool ContainsAny(string haystack, params string[] markers)
     {
         return markers.Any(marker => haystack.Contains(GuideKnowledgeBase.Normalize(marker), StringComparison.OrdinalIgnoreCase));
@@ -221,7 +286,7 @@ public sealed class QnAModeHandler : IAgentModeHandler
             }
 
             var tail = question[(index + marker.Length)..].Trim();
-            tail = tail.TrimStart('是', '：', ':', '？', '?', '的');
+            tail = tail.TrimStart('是', '：', ':', '，', ',', '？', '?', '的');
             if (!string.IsNullOrWhiteSpace(tail))
             {
                 return tail.Trim();
@@ -231,31 +296,46 @@ public sealed class QnAModeHandler : IAgentModeHandler
         return null;
     }
 
-    private static string AppendContextHint(string answer, RunAnalysis analysis)
+    private string AppendContextHint(string answer, RunAnalysis analysis)
     {
         if (string.IsNullOrWhiteSpace(analysis.RecommendedBuildName))
         {
             return answer;
         }
 
-        return answer + $"\n\n当前对局参考构筑：{analysis.RecommendedBuildName}";
+        return answer + AiBotText.Pick(_runtime.Config,
+            $"\n\n当前局势参考构筑：{analysis.RecommendedBuildName}",
+            $"\n\nCurrent build context: {analysis.RecommendedBuildName}");
     }
 
-    private static string BuildAnalysisBackedFallback(RunAnalysis analysis)
+    private string BuildAnalysisBackedFallback(RunAnalysis analysis, string? supplementalContext)
     {
         var parts = new List<string>
         {
-            "我没有在本地知识库中检索到足够直接的答案，可以尝试改问更具体的卡牌、遗物或构筑名称。"
+            AiBotText.Pick(_runtime.Config,
+                "我没有在本地知识中找到足够直接的答案。你可以把问题问得更具体一些，比如某张卡、某个遗物，或者直接问当前回合该怎么打。",
+                "I couldn't find a direct local answer yet. Try asking about a specific card, relic, or ask what the best play is right now.")
         };
+
+        if (!string.IsNullOrWhiteSpace(supplementalContext))
+        {
+            parts.Add(AiBotText.Pick(_runtime.Config,
+                "补充上下文：\n" + supplementalContext,
+                "Supplemental context:\n" + supplementalContext));
+        }
 
         if (!string.IsNullOrWhiteSpace(analysis.RunProgressSummary))
         {
-            parts.Add("当前进度：\n" + analysis.RunProgressSummary);
+            parts.Add(AiBotText.Pick(_runtime.Config,
+                "当前进度：\n" + analysis.RunProgressSummary,
+                "Current progress:\n" + analysis.RunProgressSummary));
         }
 
         if (!string.IsNullOrWhiteSpace(analysis.StrategicNeedsSummary))
         {
-            parts.Add("当前策略需求：\n" + analysis.StrategicNeedsSummary);
+            parts.Add(AiBotText.Pick(_runtime.Config,
+                "当前策略需求：\n" + analysis.StrategicNeedsSummary,
+                "Current strategic needs:\n" + analysis.StrategicNeedsSummary));
         }
 
         return string.Join("\n\n", parts);
